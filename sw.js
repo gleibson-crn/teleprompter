@@ -1,6 +1,6 @@
 // Service worker: cache-first de todos os arquivos do app (funciona offline).
 // AO PUBLICAR NOVA VERSÃO: incremente VERSION — é o que dispara a atualização nos celulares.
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = `teleprompter-${VERSION}`;
 const ASSETS = [
   './',

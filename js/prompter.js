@@ -26,6 +26,7 @@ export function createPrompter({ getSettings, setSetting, toast }) {
   let active = false;
   let cameraMode = false;
   let stream = null;
+  let streamHd = false;
   let recorder = null;
   let recChunks = [];
   let recStart = 0;
@@ -46,6 +47,11 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     $('guide').hidden = !s.guide;
     $('speed-value').textContent = s.speed;
     layout();
+    // Mudou a qualidade com a câmera aberta (e sem gravar): reabre na nova resolução.
+    if (stream && s.hd !== streamHd && recorder?.state !== 'recording') {
+      stopCamera();
+      startCamera();
+    }
   }
 
   function layout() {
@@ -63,7 +69,9 @@ export function createPrompter({ getSettings, setSetting, toast }) {
 
   function setPos(p) {
     pos = Math.min(Math.max(p, 0), maxPos);
-    text.style.transform = `translate3d(0, ${-pos}px, 0)`;
+    // Alinha ao pixel físico da tela: evita reamostrar o texto a cada quadro.
+    const dpr = window.devicePixelRatio || 1;
+    text.style.transform = `translate3d(0, ${-Math.round(pos * dpr) / dpr}px, 0)`;
     progressBar.style.width = (maxPos ? (pos / maxPos) * 100 : 0) + '%';
   }
 
@@ -202,11 +210,19 @@ export function createPrompter({ getSettings, setSetting, toast }) {
       toast('Este navegador não suporta gravação de vídeo.');
       return false;
     }
+    // 720p30 por padrão: codificar 1080p no navegador disputa CPU com o preview e a rolagem.
+    const hd = getSettings().hd;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1920 }, height: { ideal: 1080 } },
+        video: {
+          facingMode: 'user',
+          width: { ideal: hd ? 1920 : 1280 },
+          height: { ideal: hd ? 1080 : 720 },
+          frameRate: { ideal: 30, max: 30 },
+        },
         audio: { echoCancellation: true, noiseSuppression: true },
       });
+      streamHd = hd;
     } catch (err) {
       toast(err?.name === 'NotAllowedError'
         ? 'Permissão de câmera/microfone negada. Libere nas configurações do site.'
@@ -234,10 +250,15 @@ export function createPrompter({ getSettings, setSetting, toast }) {
   function startRecording() {
     const mimeType = pickMime();
     recChunks = [];
-    recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    recorder = new MediaRecorder(stream, {
+      ...(mimeType && { mimeType }),
+      videoBitsPerSecond: streamHd ? 8_000_000 : 4_000_000,
+      audioBitsPerSecond: 128_000,
+    });
     recorder.ondataavailable = (e) => e.data.size && recChunks.push(e.data);
     recorder.onstop = showRecording;
-    recorder.start(1000);
+    // Sem timeslice: um único bloco no fim, em vez de picos de trabalho a cada segundo.
+    recorder.start();
     recStart = Date.now();
     $('rec-badge').hidden = false;
     $('rec-time').textContent = '00:00';

@@ -12,6 +12,7 @@ export const DEFAULT_SETTINGS = {
   mirrorV: false,
   guide: true,
   center: false,
+  hd: false,       // gravar em 1080p (mais pesado); padrão 720p
 };
 
 const SAMPLE = {
