@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d12">
+  <meta name="description" content="Teleprompter para celular: roteiros, rolagem automática, espelhamento e gravação com a câmera frontal.">
+  <title>Teleprompter</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <!-- Lista de roteiros -->
+  <section id="view-list" class="view" hidden>
+    <header class="topbar">
+      <h1>Teleprompter</h1>
+      <div class="actions">
+        <button class="icon-btn" data-action="import" title="Importar roteiros (.json ou .txt)" aria-label="Importar"></button>
+        <button class="icon-btn" data-action="export" title="Exportar todos os roteiros" aria-label="Exportar"></button>
+      </div>
+    </header>
+    <main class="list-main">
+      <ul id="script-list" class="script-list"></ul>
+      <p id="empty-list" class="empty" hidden>Nenhum roteiro ainda. Toque em <strong>+</strong> para criar o primeiro.</p>
+    </main>
+    <button class="fab" data-action="new" aria-label="Novo roteiro"></button>
+    <input type="file" id="import-input" accept=".json,.txt,application/json,text/plain" multiple hidden>
+  </section>
+
+  <!-- Editor -->
+  <section id="view-edit" class="view" hidden>
+    <header class="topbar">
+      <button class="icon-btn" data-action="back" aria-label="Voltar"></button>
+      <input id="edit-title" class="title-input" placeholder="Título do roteiro" maxlength="120">
+      <div class="actions">
+        <button class="icon-btn" data-action="duplicate" title="Duplicar" aria-label="Duplicar"></button>
+        <button class="icon-btn danger" data-action="delete" title="Excluir" aria-label="Excluir"></button>
+      </div>
+    </header>
+    <textarea id="edit-text" class="editor" placeholder="Cole ou digite o texto aqui…" spellcheck="true"></textarea>
+    <footer class="edit-footer">
+      <span id="edit-stats" class="stats"></span>
+      <div class="actions">
+        <button class="btn secondary" data-action="camera"><span class="btn-ico" data-icon="camera"></span>Câmera</button>
+        <button class="btn primary" data-action="play"><span class="btn-ico" data-icon="play"></span>Ler</button>
+      </div>
+    </footer>
+  </section>
+
+  <!-- Teleprompter (com ou sem câmera) -->
+  <section id="view-prompter" class="view prompter" hidden>
+    <video id="cam-video" class="cam-video" playsinline muted hidden></video>
+    <div id="stage" class="stage">
+      <div id="stage-inner" class="stage-inner">
+        <div id="prompt-text" class="prompt-text"></div>
+        <div id="guide" class="guide" aria-hidden="true"></div>
+      </div>
+    </div>
+    <div id="countdown" class="countdown" hidden></div>
+    <div id="rec-badge" class="rec-badge" hidden><span class="dot"></span><span id="rec-time">00:00</span></div>
+
+    <div id="controls" class="controls">
+      <div class="progress"><div id="progress-bar" class="progress-bar"></div></div>
+      <div class="control-row">
+        <button class="icon-btn" data-action="close" aria-label="Fechar"></button>
+        <button class="icon-btn" data-action="restart" aria-label="Voltar ao início"></button>
+        <div class="speed">
+          <button class="icon-btn" data-action="slower" aria-label="Mais devagar"></button>
+          <span id="speed-value" class="speed-value" title="Velocidade"></span>
+          <button class="icon-btn" data-action="faster" aria-label="Mais rápido"></button>
+        </div>
+        <button id="btn-rec" class="icon-btn rec" data-action="record" aria-label="Gravar" hidden></button>
+        <button id="btn-toggle" class="icon-btn big" data-action="toggle" aria-label="Iniciar/pausar"></button>
+        <button class="icon-btn" data-action="settings" aria-label="Ajustes"></button>
+      </div>
+    </div>
+
+    <!-- Ajustes -->
+    <div id="settings" class="sheet" hidden>
+      <div class="sheet-head">
+        <h2>Ajustes</h2>
+        <button class="icon-btn" data-action="settings-close" aria-label="Fechar ajustes"></button>
+      </div>
+      <label class="field">Velocidade <output data-out="speed"></output>
+        <input type="range" data-setting="speed" min="1" max="40" step="1"></label>
+      <label class="field">Tamanho da fonte <output data-out="fontSize"></output>
+        <input type="range" data-setting="fontSize" min="20" max="120" step="2"></label>
+      <label class="field">Margens laterais <output data-out="margin"></output>
+        <input type="range" data-setting="margin" min="0" max="25" step="1"></label>
+      <label class="field">Posição da linha de leitura <output data-out="guidePos"></output>
+        <input type="range" data-setting="guidePos" min="10" max="70" step="1"></label>
+      <label class="field">Contagem regressiva <output data-out="countdown"></output>
+        <input type="range" data-setting="countdown" min="0" max="10" step="1"></label>
+      <div class="toggles">
+        <label class="toggle"><input type="checkbox" data-setting="mirrorH"><span data-icon="flip-horizontal-2"></span>Espelhar horizontal</label>
+        <label class="toggle"><input type="checkbox" data-setting="mirrorV"><span data-icon="flip-vertical-2"></span>Espelhar vertical</label>
+        <label class="toggle"><input type="checkbox" data-setting="guide"><span data-icon="minus"></span>Linha de leitura</label>
+        <label class="toggle"><input type="checkbox" data-setting="center"><span data-icon="file-text"></span>Texto centralizado</label>
+      </div>
+    </div>
+
+    <!-- Resultado da gravação -->
+    <div id="rec-result" class="sheet" hidden>
+      <div class="sheet-head"><h2>Gravação pronta</h2></div>
+      <video id="rec-preview" class="rec-preview" controls playsinline></video>
+      <div class="actions wide">
+        <button class="btn secondary" data-action="rec-discard"><span class="btn-ico" data-icon="trash-2"></span>Descartar</button>
+        <button id="btn-rec-share" class="btn secondary" data-action="rec-share" hidden><span class="btn-ico" data-icon="share-2"></span>Compartilhar</button>
+        <button class="btn primary" data-action="rec-save"><span class="btn-ico" data-icon="download"></span>Salvar</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
