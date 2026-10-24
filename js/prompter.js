@@ -315,8 +315,10 @@ export function createPrompter({ getSettings, setSetting, toast }) {
 
   function closeRecording() {
     const preview = $('rec-preview');
+    preview.pause();
     if (preview.src) URL.revokeObjectURL(preview.src);
     preview.removeAttribute('src');
+    preview.load(); // descarrega a mídia; sem isso o áudio segue tocando em segundo plano
     recBlob = null;
     $('rec-result').hidden = true;
   }
