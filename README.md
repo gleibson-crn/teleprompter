@@ -1,5 +1,9 @@
 # Teleprompter
 
+## 👉 [Abrir o Teleprompter](https://gleibson-crn.github.io/teleprompter/)
+
+**https://gleibson-crn.github.io/teleprompter/** — toque no link no celular. Para instalar, use o menu ⋮ do Chrome → **Instalar app**.
+
 Teleprompter para celular em forma de **PWA**: você instala pelo navegador, sem loja de aplicativos, e ele funciona offline. É HTML, CSS e JS puro, sem build e sem dependências. Os roteiros ficam só no aparelho (`localStorage`).
 
 ## Recursos
