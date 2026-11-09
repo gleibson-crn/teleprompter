@@ -185,6 +185,19 @@
 
   <div id="toast" class="toast" hidden></div>
 
+  <!-- Confirmação do próprio app (substitui o confirm() do navegador) -->
+  <dialog id="ask" class="dialog" aria-labelledby="ask-title" aria-describedby="ask-msg">
+    <form method="dialog">
+      <span id="ask-ico" class="dialog-ico" aria-hidden="true"></span>
+      <h2 id="ask-title"></h2>
+      <p id="ask-msg"></p>
+      <div class="dialog-actions">
+        <button class="btn" value="cancel">Cancelar</button>
+        <button id="ask-ok" class="btn danger" value="ok"></button>
+      </div>
+    </form>
+  </dialog>
+
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

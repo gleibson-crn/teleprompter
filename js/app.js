@@ -30,6 +30,25 @@ function toast(msg, { onClick, sticky = false } = {}) {
   if (!sticky) toastTimer = setTimeout(() => { el.hidden = true; }, 3500);
 }
 
+// ---------- Confirmação (diálogo do app, no lugar do confirm() do navegador) ----------
+// Esc, "voltar" do Android e toque fora do cartão = Cancelar.
+const askDialog = $('ask');
+askDialog.addEventListener('click', (e) => { if (e.target === askDialog) askDialog.close(); });
+function ask({ title, message = '', ok, icon: ico = 'trash-2' }) {
+  $('ask-title').textContent = title;
+  $('ask-msg').textContent = message;
+  $('ask-ico').innerHTML = icon(ico);
+  $('ask-ok').textContent = ok;
+  askDialog.returnValue = '';
+  askDialog.showModal();
+  return new Promise((resolve) => {
+    askDialog.addEventListener('close', () => resolve(askDialog.returnValue === 'ok'), { once: true });
+  });
+}
+const askStopRecording = () => ask({
+  title: 'Parar a gravação e sair?', message: 'O vídeo que está sendo gravado será perdido.', ok: 'Parar e sair', icon: 'square',
+});
+
 // ---------- Ajustes ----------
 let settings = store.loadSettings();
 const getSettings = () => settings;
@@ -81,12 +100,20 @@ function back(fallback = '#/') {
   else { history.replaceState({ d: 0 }, '', fallback); render(); }
 }
 let lastHash = location.hash;
+let leaving = false; // saída já confirmada: o próximo popstate não pergunta de novo
+async function leavePrompter() {
+  if (prompter.isRecording() && !(await askStopRecording())) return;
+  leaving = true;
+  back(`#/edit/${currentId}`);
+}
 window.addEventListener('popstate', () => {
-  // "Voltar" do Android durante a gravação: confirma antes de perder o vídeo.
-  if (prompter.isRecording() && !confirm('Parar a gravação e sair?')) {
+  // "Voltar" do Android durante a gravação: fica na tela e confirma antes de perder o vídeo.
+  if (!leaving && prompter.isRecording()) {
     history.pushState({ d: (history.state?.d || 0) + 1 }, '', lastHash);
+    leavePrompter();
     return;
   }
+  leaving = false;
   render();
 });
 
@@ -210,8 +237,8 @@ const ACTIONS = {
     render();
     toast('Roteiro duplicado.');
   },
-  delete: () => {
-    if (!confirm('Excluir este roteiro? Não dá para desfazer.')) return;
+  delete: async () => {
+    if (!(await ask({ title: 'Excluir este roteiro?', message: 'Não dá para desfazer.', ok: 'Excluir' }))) return;
     clearTimeout(saveTimer);
     saveTimer = 0;
     store.deleteScript(currentId);
@@ -219,10 +246,7 @@ const ACTIONS = {
   },
   play: () => { flushSave(); go(`#/play/${currentId}`); },
   camera: () => { flushSave(); go(`#/cam/${currentId}`); },
-  close: () => {
-    if (prompter.isRecording() && !confirm('Parar a gravação e sair?')) return;
-    back(`#/edit/${currentId}`);
-  },
+  close: () => leavePrompter(),
   toggle: () => prompter.toggle(),
   restart: () => prompter.restart(),
   slower: () => prompter.changeSpeed(-1),
@@ -237,7 +261,9 @@ const ACTIONS = {
   'mic-play-processed': () => prompter.playTest('processed'),
   'rec-save': () => prompter.saveRecording(),
   'rec-share': () => prompter.shareRecording(),
-  'rec-discard': () => { if (confirm('Descartar esta gravação?')) prompter.discardRecording(); },
+  'rec-discard': async () => {
+    if (await ask({ title: 'Descartar esta gravação?', message: 'O vídeo será apagado e não dá para recuperar.', ok: 'Descartar' })) prompter.discardRecording();
+  },
 };
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-action]');
