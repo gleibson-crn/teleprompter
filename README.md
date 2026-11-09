@@ -4,7 +4,7 @@
 
 **https://gleibson-crn.github.io/teleprompter/** — toque no link no celular. Para instalar, use o menu ⋮ do Chrome → **Instalar app**.
 
-Teleprompter para celular em forma de **PWA**: você instala pelo navegador, sem loja de aplicativos, e ele funciona offline. É HTML, CSS e JS puro, sem build e sem dependências. Os roteiros ficam só no aparelho (`localStorage`).
+Teleprompter para celular em forma de **PWA**: você instala pelo navegador, sem loja de aplicativos, e ele funciona offline. É HTML, CSS e JS puro, sem build. A única biblioteca de terceiros é o detector de rosto (MediaPipe), guardado dentro do repositório. Os roteiros ficam só no aparelho (`localStorage`).
 
 ## Recursos
 
@@ -19,9 +19,23 @@ Teleprompter para celular em forma de **PWA**: você instala pelo navegador, sem
   - texto centralizado;
   - espelhamento horizontal e vertical (para teleprompter com vidro).
 - **Modo câmera:**
-  - preview da câmera frontal, com o texto no topo, perto da lente;
+  - preview da câmera, com o texto perto da lente: no topo com o celular em pé, e na lateral do lado da lente com o celular deitado;
   - gravação de áudio e vídeo **sem o texto**;
   - o vídeo é salvo em MP4 quando o navegador suporta (WebM nos demais) ou enviado pelo compartilhar.
+- **Vertical inteligente (9:16):**
+  - com o celular deitado, a câmera grava em 1080p e o app recorta ao vivo um vídeo vertical de 608×1080 que **acompanha o seu rosto**;
+  - o recorte usa suavização e zona morta para não tremer;
+  - o detector de rosto (MediaPipe, ~12 MB) é baixado na 1ª vez que você liga o modo e depois funciona offline.
+- **Câmera e áudio** (botão de controles na tela da câmera):
+  - câmera frontal ou traseira, resolução 720p/1080p e 30/60 fps;
+  - zoom, exposição, foco manual e lanterna, que só aparecem se o aparelho suportar;
+  - grade de terços e guia vertical 9:16;
+  - escolha do microfone (interno, com fio, USB);
+  - modo **Voz** (redução de ruído, corte de grave, clareza, compressor) ou **Cru**;
+  - ganho de até +20 dB com limitador que impede estourar;
+  - opção de silenciar o fundo nas pausas (noise gate);
+  - medidor de nível;
+  - **teste de microfone** de 5 s com comparação entre som cru e tratado.
 - A tela não apaga durante a leitura (Wake Lock). Tela cheia ao abrir o teleprompter.
 - Teclado ou pedal Bluetooth:
   - espaço inicia ou pausa;
@@ -46,7 +60,7 @@ Câmera, service worker e Wake Lock exigem HTTPS ou `localhost`.
 ## Publicar nova versão
 
 1. Altere os arquivos.
-2. **Incremente `VERSION` em [sw.js](sw.js).** Sem isso, os celulares continuam com a versão em cache. Se criar arquivo novo, adicione-o a `ASSETS`.
+2. **Incremente `VERSION` em [sw.js](sw.js).** Sem isso, os celulares continuam com a versão em cache. Se criar arquivo novo, adicione-o a `ASSETS`. Os arquivos de `vendor/` não entram em `ASSETS`: eles têm cache próprio, preenchido no 1º uso. Se trocar a versão do MediaPipe, mude também `VENDOR_CACHE`.
 3. Faça commit e push na `main`. O GitHub Pages publica sozinho, sem Actions.
 4. No celular, aparece o aviso "Nova versão disponível". Toque nele para atualizar.
 
@@ -57,7 +71,11 @@ Câmera, service worker e Wake Lock exigem HTTPS ou `localhost`.
 | `index.html` | As 3 telas: lista, editor e teleprompter |
 | `css/app.css` | Estilos (tema escuro, mobile-first) |
 | `js/app.js` | Rotas (hash), lista, editor, ajustes, importar/exportar, registro do SW |
-| `js/prompter.js` | Rolagem, gestos, contagem, Wake Lock, câmera e gravação |
+| `js/prompter.js` | Rolagem, gestos, contagem, Wake Lock, layout da câmera, painel Câmera e áudio, gravação |
+| `js/capture.js` | Abre câmera e microfone, decide o que é gravado, controles de câmera, teste de microfone |
+| `js/audio.js` | Cadeia de áudio (Web Audio): filtro, presença, compressor, ganho, noise gate, limitador, medidor |
+| `js/reframe.js` | Vertical inteligente: recorte 9:16 em canvas e acompanhamento do rosto |
+| `vendor/mediapipe/` | MediaPipe Tasks Vision 0.10.34 + modelo BlazeFace (Apache-2.0), carregado sob demanda |
 | `js/store.js` | Persistência em `localStorage` |
 | `js/icons.js` | Ícones [Lucide](https://lucide.dev) (ISC) |
 | `sw.js` | Cache offline e atualização |

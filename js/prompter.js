@@ -1,6 +1,8 @@
 // Motor do teleprompter: rolagem por tempo (independe do FPS), gestos, contagem
 // regressiva, Wake Lock, tela cheia e — no modo câmera — preview + gravação.
 import { icon } from './icons.js';
+import { createCapture, pickMime } from './capture.js';
+import { cropSize } from './reframe.js';
 
 const $ = (id) => document.getElementById(id);
 const LINE_HEIGHT = 1.35;
@@ -16,6 +18,7 @@ export function createPrompter({ getSettings, setSetting, toast }) {
   const progressBar = $('progress-bar');
   const countdownEl = $('countdown');
   const video = $('cam-video');
+  const canvas = $('cam-canvas');
 
   let pos = 0;
   let maxPos = 0;
@@ -25,14 +28,26 @@ export function createPrompter({ getSettings, setSetting, toast }) {
   let countdownTimer = 0;
   let active = false;
   let cameraMode = false;
-  let stream = null;
-  let streamHd = false;
   let recorder = null;
+  let recDispose = null;
   let recChunks = [];
   let recStart = 0;
   let recTimer = 0;
   let recBlob = null;
   let wakeLock = null;
+  let meterTimer = 0;
+  let restarting = false;
+
+  const capture = createCapture({
+    video, canvas, getSettings, setSetting, toast,
+    onFrameResize: () => positionOverlay(),
+    onReframeStatus: (st) => {
+      const el = $('reframe-status');
+      el.hidden = st === 'ready';
+      el.textContent = st === 'loading' ? 'Carregando detector de rosto…' : st === 'error' ? 'Detector de rosto indisponível — recorte centralizado.' : '';
+      if (st === 'error') setTimeout(() => { el.hidden = true; }, 4000);
+    },
+  });
 
   // ---------- Layout ----------
   function applySettings() {
@@ -46,12 +61,52 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     inner.classList.toggle('mirror-v', s.mirrorV);
     $('guide').hidden = !s.guide;
     $('speed-value').textContent = s.speed;
+    capture.applyAudio(s);
+    updateCameraClasses();
     layout();
-    // Mudou a qualidade com a câmera aberta (e sem gravar): reabre na nova resolução.
-    if (stream && s.hd !== streamHd && recorder?.state !== 'recording') {
-      stopCamera();
-      startCamera();
-    }
+    // Trocou câmera/resolução/microfone com a câmera aberta (e sem gravar): reabre.
+    if (cameraMode && capture.needsRestart() && !isRecording()) restartCamera();
+  }
+
+  function updateCameraClasses() {
+    const s = getSettings();
+    const type = screen.orientation?.type || '';
+    const landscape = type ? type.startsWith('landscape') : innerWidth > innerHeight;
+    view.classList.toggle('landscape', landscape);
+    // landscape-primary: topo do aparelho (lente frontal) à esquerda.
+    view.classList.toggle('lens-right', type === 'landscape-secondary');
+    view.classList.toggle('vertical', cameraMode && capture.isVertical());
+    view.classList.toggle('rear', s.facing === 'environment');
+    $('grid').hidden = !s.grid;
+    $('guide916').hidden = !(s.guide916 && !capture.isVertical());
+    $('frame-overlay').hidden = !cameraMode || !capture.active() || (!s.grid && $('guide916').hidden);
+    positionOverlay();
+  }
+
+  /** Posiciona grade/guia sobre a área visível do preview (considera object-fit). */
+  function positionOverlay() {
+    const ov = $('frame-overlay');
+    if (ov.hidden) return;
+    const vertical = capture.isVertical();
+    const el = vertical ? canvas : video;
+    const { w: iw, h: ih } = capture.videoSize();
+    if (!iw || !ih) return;
+    const r = el.getBoundingClientRect();
+    const scale = (vertical ? Math.min : Math.max)(r.width / iw, r.height / ih);
+    const cw = iw * scale;
+    const ch = ih * scale;
+    const left = Math.max(r.left, r.left + (r.width - cw) / 2);
+    const top = Math.max(r.top, r.top + (r.height - ch) / 2);
+    const right = Math.min(r.right, r.left + (r.width + cw) / 2);
+    const bottom = Math.min(r.bottom, r.top + (r.height + ch) / 2);
+    Object.assign(ov.style, { left: left + 'px', top: top + 'px', width: right - left + 'px', height: bottom - top + 'px' });
+    // Guia 9:16: o recorte máximo da fonte, centralizado, em coordenadas de tela.
+    const crop = cropSize(iw, ih);
+    const g = $('guide916').style;
+    g.width = crop.w * scale + 'px';
+    g.height = crop.h * scale + 'px';
+    g.left = (r.left + r.width / 2 - left) - (crop.w * scale) / 2 + 'px';
+    g.top = (r.top + r.height / 2 - top) - (crop.h * scale) / 2 + 'px';
   }
 
   function layout() {
@@ -140,11 +195,13 @@ export function createPrompter({ getSettings, setSetting, toast }) {
   }
 
   // ---------- Gestos: toque = play/pausa, arrastar = posicionar ----------
+  const sheets = ['settings', 'av'];
   let drag = null;
   stage.addEventListener('pointerdown', (e) => {
-    if (!$('settings').hidden) { $('settings').hidden = true; return; }
+    const open = sheets.find((id) => !$(id).hidden);
+    if (open) { $(open).hidden = true; return; }
     if (!$('rec-result').hidden) return;
-    drag ={ y: e.clientY, pos, moved: false, wasPlaying: playing };
+    drag = { y: e.clientY, pos, moved: false, wasPlaying: playing };
     stage.setPointerCapture(e.pointerId);
   });
   stage.addEventListener('pointermove', (e) => {
@@ -171,7 +228,7 @@ export function createPrompter({ getSettings, setSetting, toast }) {
 
   // Teclado / pedal Bluetooth
   document.addEventListener('keydown', (e) => {
-    if (!active || e.target.closest?.('input, textarea')) return;
+    if (!active || e.target.closest?.('input, textarea, select')) return;
     const page = stage.clientHeight * 0.4;
     switch (e.key) {
       case ' ': case 'Enter': toggle(); break;
@@ -180,13 +237,12 @@ export function createPrompter({ getSettings, setSetting, toast }) {
       case 'PageDown': case 'ArrowRight': setPos(pos + page); break;
       case 'PageUp': case 'ArrowLeft': setPos(pos - page); break;
       case 'Home': setPos(0); break;
-      case 'Escape': return;
       default: return;
     }
     e.preventDefault();
   });
 
-  // ---------- Wake Lock / tela cheia ----------
+  // ---------- Wake Lock / tela cheia / orientação ----------
   async function lockScreen() {
     try { wakeLock = await navigator.wakeLock?.request('screen'); } catch { /* sem suporte */ }
   }
@@ -194,7 +250,10 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     if (document.visibilityState === 'visible' && active) lockScreen();
     else if (document.visibilityState === 'hidden' && playing) pause();
   });
-  window.addEventListener('resize', () => layout());
+  const onResize = () => { if (!active) return; updateCameraClasses(); layout(); };
+  window.addEventListener('resize', onResize);
+  screen.orientation?.addEventListener('change', onResize);
+  video.addEventListener('resize', () => positionOverlay());
 
   function enterFullscreen() {
     const el = document.documentElement;
@@ -204,55 +263,138 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   }
 
-  // ---------- Câmera e gravação ----------
+  // ---------- Câmera ----------
   async function startCamera() {
-    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-      toast('Este navegador não suporta gravação de vídeo.');
-      return false;
-    }
-    // 720p30 por padrão: codificar 1080p no navegador disputa CPU com o preview e a rolagem.
-    const hd = getSettings().hd;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'user',
-          width: { ideal: hd ? 1920 : 1280 },
-          height: { ideal: hd ? 1080 : 720 },
-          frameRate: { ideal: 30, max: 30 },
-        },
-        audio: { echoCancellation: true, noiseSuppression: true },
-      });
-      streamHd = hd;
-    } catch (err) {
-      toast(err?.name === 'NotAllowedError'
-        ? 'Permissão de câmera/microfone negada. Libere nas configurações do site.'
-        : 'Não foi possível abrir a câmera.');
-      return false;
-    }
-    video.srcObject = stream;
-    video.hidden = false;
-    await video.play().catch(() => {});
-    return true;
+    const ok = await capture.start();
+    $('btn-av').hidden = !ok;
+    $('meter').hidden = !ok;
+    clearInterval(meterTimer);
+    if (ok) meterTimer = setInterval(renderMeter, 70);
+    updateCameraClasses();
+    layout();
+    if (!$('av').hidden) renderAv();
+    return ok;
+  }
+
+  async function restartCamera() {
+    if (restarting) return;
+    restarting = true;
+    capture.stop();
+    await startCamera();
+    restarting = false;
+    // Algo mudou durante a reabertura? Reabre de novo com o estado atual.
+    if (cameraMode && capture.needsRestart()) restartCamera();
   }
 
   function stopCamera() {
-    stream?.getTracks().forEach((t) => t.stop());
-    stream = null;
-    video.srcObject = null;
-    video.hidden = true;
+    clearInterval(meterTimer);
+    capture.stop();
+    $('meter').hidden = true;
+    $('btn-av').hidden = true;
+    $('reframe-status').hidden = true;
+    updateCameraClasses();
   }
 
-  function pickMime() {
-    const types = ['video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
-    return types.find((t) => MediaRecorder.isTypeSupported(t)) || '';
+  function renderMeter() {
+    const lv = capture.level();
+    if (!lv) return;
+    // -60 dBFS → 0%, 0 dBFS → 100%
+    const pct = Math.max(0, Math.min(100, ((lv.peak + 60) / 60) * 100));
+    const clip = lv.peak > -1;
+    for (const el of [$('meter').firstElementChild, $('meter-wide-fill')]) {
+      el.style.setProperty('--level', pct + '%');
+      el.classList.toggle('clip', clip);
+    }
   }
+
+  // ---------- Painel Câmera e áudio ----------
+  async function renderAv() {
+    $('av-locked').hidden = !isRecording();
+    for (const el of $('av').querySelectorAll('[data-restart]')) el.disabled = isRecording();
+
+    // Microfones (os nomes só aparecem depois da permissão).
+    const sel = $('mic-select');
+    const mics = await capture.listMics().catch(() => []);
+    const s = getSettings();
+    sel.replaceChildren(new Option('Padrão do sistema', ''), ...mics
+      .filter((m) => m.deviceId && m.deviceId !== 'default')
+      .map((m, i) => new Option(m.label || `Microfone ${i + 1}`, m.deviceId)));
+    sel.value = s.micId;
+    if (sel.value !== s.micId) sel.value = '';
+
+    const info = capture.micInfo();
+    $('mic-info').textContent = info
+      ? `Em uso: ${info.label || 'microfone'}${info.sampleRate ? ` · ${Math.round(info.sampleRate / 1000)} kHz` : ''} · redução de ruído do aparelho: ${info.noiseSuppression ? 'ligada' : 'desligada'}`
+      : '';
+
+    // Controles que o aparelho suporta.
+    const box = $('cam-controls');
+    box.replaceChildren(...capture.controls().map((c) => {
+      const label = document.createElement('label');
+      if (c.type === 'toggle') {
+        label.className = 'toggle';
+        const input = Object.assign(document.createElement('input'), { type: 'checkbox', checked: c.value });
+        input.addEventListener('change', () => capture.setControl(c.name, input.checked));
+        label.append(input, c.label);
+      } else {
+        label.className = 'field';
+        const out = document.createElement('output');
+        out.textContent = c.fmt(c.value);
+        const input = Object.assign(document.createElement('input'), { type: 'range', min: c.min, max: c.max, step: c.step || 'any', value: c.value });
+        input.addEventListener('input', () => { out.textContent = c.fmt(input.value); capture.setControl(c.name, Number(input.value)); });
+        label.append(c.label + ' ', out, input);
+      }
+      return label;
+    }));
+  }
+
+  let micTest = null;
+  async function testMic() {
+    if (!capture.active() || isRecording()) return;
+    const btn = $('btn-mic-test');
+    btn.disabled = true;
+    $('mic-test-result').hidden = true;
+    const label = btn.lastChild;
+    const original = label.textContent;
+    try {
+      const { raw, processed } = await capture.testMic(5, (n) => { label.textContent = `Fale agora… ${n}`; });
+      if (micTest) Object.values(micTest).forEach((u) => URL.revokeObjectURL(u));
+      micTest = { raw: URL.createObjectURL(raw), processed: URL.createObjectURL(processed) };
+      $('mic-test-result').hidden = false;
+      playTest('processed');
+    } catch {
+      toast('Não foi possível testar o microfone.');
+    } finally {
+      label.textContent = original;
+      btn.disabled = false;
+    }
+  }
+
+  function playTest(which) {
+    const a = $('mic-test-audio');
+    a.pause();
+    a.src = micTest[which];
+    a.play().catch(() => {});
+  }
+
+  function stopTestAudio() {
+    const a = $('mic-test-audio');
+    a.pause();
+    a.removeAttribute('src');
+    a.load();
+  }
+
+  // ---------- Gravação ----------
+  const isRecording = () => recorder?.state === 'recording';
 
   function startRecording() {
-    const mimeType = pickMime();
+    const rec = capture.recording();
+    const mimeType = pickMime('video');
     recChunks = [];
-    recorder = new MediaRecorder(stream, {
+    recDispose = rec.dispose;
+    recorder = new MediaRecorder(rec.stream, {
       ...(mimeType && { mimeType }),
-      videoBitsPerSecond: streamHd ? 8_000_000 : 4_000_000,
+      videoBitsPerSecond: rec.videoBitsPerSecond,
       audioBitsPerSecond: 128_000,
     });
     recorder.ondataavailable = (e) => e.data.size && recChunks.push(e.data);
@@ -268,6 +410,7 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     }, 500);
     btnRec.classList.add('on');
     btnRec.innerHTML = icon('square');
+    if (!$('av').hidden) renderAv();
   }
 
   function stopRecording() {
@@ -278,13 +421,15 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     if (recorder?.state !== 'inactive') recorder?.stop();
   }
 
-  function toggleRecording() {
-    if (recorder?.state === 'recording') {
+  async function toggleRecording() {
+    if (isRecording()) {
       stopRecording();
       pause();
       return;
     }
-    if (!stream) return;
+    if (!capture.active()) return;
+    $('av').hidden = true;
+    await capture.resumeAudio();
     // Grava a partir do fim da contagem regressiva.
     if (pos > 0 || getSettings().countdown <= 0) { startRecording(); play(); return; }
     play();
@@ -299,11 +444,15 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     const type = recorder.mimeType || recChunks[0]?.type || 'video/webm';
     recBlob = new Blob(recChunks, { type });
     recorder = null;
+    recDispose?.();
+    recDispose = null;
     const preview = $('rec-preview');
     preview.src = URL.createObjectURL(recBlob);
     const file = recFile();
     $('btn-rec-share').hidden = !(navigator.canShare && navigator.canShare({ files: [file] }));
     $('rec-result').hidden = false;
+    // Algo pedido durante a gravação (ex.: trocar microfone) fica para agora.
+    if (cameraMode && capture.needsRestart()) restartCamera();
   }
 
   function recFile() {
@@ -351,7 +500,7 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     text.textContent = script.text || '';
     pos = 0;
     maxPos = 0;
-    $('settings').hidden = true;
+    sheets.forEach((id) => { $(id).hidden = true; });
     closeRecording();
     enterFullscreen();
     lockScreen();
@@ -359,6 +508,7 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     renderState();
     if (camera && !(await startCamera())) {
       btnRec.hidden = true;
+      cameraMode = false;
       view.classList.remove('camera');
       layout();
     }
@@ -366,25 +516,34 @@ export function createPrompter({ getSettings, setSetting, toast }) {
 
   function close() {
     if (!active) return;
-    if (recorder?.state === 'recording') {
+    if (isRecording()) {
       recorder.onstop = null;
       stopRecording();
+      recDispose?.();
+      recorder = null;
     }
     pause();
     cancelCountdown();
+    stopTestAudio();
     stopCamera();
     closeRecording();
     wakeLock?.release().catch(() => {});
     wakeLock = null;
     exitFullscreen();
     active = false;
+    cameraMode = false;
   }
 
   return {
     open, close, applySettings, toggle, changeSpeed,
     restart: () => { pause(); cancelCountdown(); setPos(0); },
     toggleRecording, saveRecording, shareRecording, discardRecording: closeRecording,
-    isRecording: () => recorder?.state === 'recording',
+    isRecording,
     isCamera: () => cameraMode,
+    openAv: () => { $('settings').hidden = true; $('av').hidden = false; renderAv(); },
+    closeAv: () => { $('av').hidden = true; stopTestAudio(); },
+    testMic,
+    playTest,
+    debug: () => ({ reframe: capture.reframeState(), size: capture.videoSize(), vertical: capture.isVertical(), level: capture.level() }),
   };
 }

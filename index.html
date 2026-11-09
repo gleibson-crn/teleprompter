@@ -52,6 +52,13 @@
   <!-- Teleprompter (com ou sem câmera) -->
   <section id="view-prompter" class="view prompter" hidden>
     <video id="cam-video" class="cam-video" playsinline muted hidden></video>
+    <canvas id="cam-canvas" class="cam-canvas" hidden></canvas>
+    <div id="frame-overlay" class="frame-overlay" hidden>
+      <div id="grid" class="grid" hidden></div>
+      <div id="guide916" class="guide916" hidden></div>
+    </div>
+    <div id="reframe-status" class="reframe-status" hidden></div>
+    <div id="meter" class="meter" hidden><div class="meter-fill"></div></div>
     <div id="stage" class="stage">
       <div id="stage-inner" class="stage-inner">
         <div id="prompt-text" class="prompt-text"></div>
@@ -73,6 +80,7 @@
         </div>
         <button id="btn-rec" class="icon-btn rec" data-action="record" aria-label="Gravar" hidden></button>
         <button id="btn-toggle" class="icon-btn big" data-action="toggle" aria-label="Iniciar/pausar"></button>
+        <button id="btn-av" class="icon-btn" data-action="av" aria-label="Câmera e áudio" hidden></button>
         <button class="icon-btn" data-action="settings" aria-label="Ajustes"></button>
       </div>
     </div>
@@ -98,8 +106,69 @@
         <label class="toggle"><input type="checkbox" data-setting="mirrorV"><span data-icon="flip-vertical-2"></span>Espelhar vertical</label>
         <label class="toggle"><input type="checkbox" data-setting="guide"><span data-icon="minus"></span>Linha de leitura</label>
         <label class="toggle"><input type="checkbox" data-setting="center"><span data-icon="file-text"></span>Texto centralizado</label>
-        <label class="toggle"><input type="checkbox" data-setting="hd"><span data-icon="video"></span>Gravar em Full HD (1080p — mais pesado)</label>
       </div>
+    </div>
+
+    <!-- Câmera e áudio -->
+    <div id="av" class="sheet" hidden>
+      <div class="sheet-head">
+        <h2>Câmera e áudio</h2>
+        <button class="icon-btn" data-action="av-close" aria-label="Fechar"></button>
+      </div>
+      <p id="av-locked" class="hint warn" hidden>Pare a gravação para trocar câmera, resolução ou microfone.</p>
+
+      <h3 class="sheet-sub"><span data-icon="video"></span>Vídeo</h3>
+      <div class="toggles">
+        <label class="toggle"><input type="checkbox" data-setting="vertical" data-restart><span data-icon="rectangle-vertical"></span>Vertical inteligente (9:16)</label>
+        <p class="hint">Deite o celular na horizontal: o app recorta um vídeo vertical e acompanha você. Na 1ª vez baixa o detector de rosto (~12 MB).</p>
+        <label class="toggle"><input type="checkbox" data-setting="follow" data-restart><span data-icon="scan-face"></span>Seguir o rosto</label>
+        <label class="toggle"><input type="checkbox" data-setting="grid"><span data-icon="grid-3x3"></span>Grade (regra dos terços)</label>
+        <label class="toggle"><input type="checkbox" data-setting="guide916"><span data-icon="rectangle-vertical"></span>Guia vertical 9:16 (no modo normal)</label>
+      </div>
+      <div class="row-fields">
+        <label class="field">Câmera
+          <select data-setting="facing" data-restart>
+            <option value="user">Frontal</option>
+            <option value="environment">Traseira</option>
+          </select></label>
+        <label class="field">Resolução
+          <select data-setting="res" data-number data-restart>
+            <option value="720">720p (leve)</option>
+            <option value="1080">1080p Full HD</option>
+          </select></label>
+        <label class="field">Quadros/s
+          <select data-setting="fps" data-number data-restart>
+            <option value="30">30 fps</option>
+            <option value="60">60 fps</option>
+          </select></label>
+      </div>
+      <p class="hint">No Vertical inteligente a câmera usa 1080p para o recorte ficar nítido.</p>
+      <div id="cam-controls"></div>
+
+      <h3 class="sheet-sub"><span data-icon="mic"></span>Áudio</h3>
+      <label class="field">Microfone
+        <select id="mic-select" data-setting="micId" data-restart></select></label>
+      <label class="field">Modo
+        <select data-setting="audioMode" data-restart>
+          <option value="voz">Voz — limpeza de ruído, clareza e volume uniforme</option>
+          <option value="cru">Cru — som natural, sem tratamento</option>
+        </select></label>
+      <label class="field">Ganho do microfone <output data-out="gainDb"></output>
+        <input type="range" data-setting="gainDb" min="0" max="20" step="1"></label>
+      <div class="toggles">
+        <label class="toggle"><input type="checkbox" data-setting="gate"><span data-icon="volume-2"></span>Silenciar o fundo nas pausas</label>
+      </div>
+      <div class="meter-wide" aria-label="Nível do microfone"><div id="meter-wide-fill" class="meter-fill"></div><span class="meter-clip">0 dB</span></div>
+      <p id="mic-info" class="hint"></p>
+      <div class="mic-test">
+        <button id="btn-mic-test" class="btn secondary" data-action="mic-test"><span class="btn-ico" data-icon="audio-lines"></span>Testar microfone (5 s)</button>
+        <div id="mic-test-result" class="actions" hidden>
+          <button class="btn secondary" data-action="mic-play-raw">Ouvir cru</button>
+          <button class="btn primary" data-action="mic-play-processed">Ouvir tratado</button>
+        </div>
+        <audio id="mic-test-audio" hidden></audio>
+      </div>
+      <p class="hint">Microfone Bluetooth costuma gravar com qualidade de ligação (abafado). Para voz, prefira o do celular, com fio ou USB.</p>
     </div>
 
     <!-- Resultado da gravação -->

@@ -12,7 +12,19 @@ export const DEFAULT_SETTINGS = {
   mirrorV: false,
   guide: true,
   center: false,
-  hd: false,       // gravar em 1080p (mais pesado); padrão 720p
+  // Câmera
+  facing: 'user',  // 'user' (frontal) | 'environment' (traseira)
+  res: 720,        // 720 | 1080 — 720p é o mais fluido
+  fps: 30,         // 30 | 60
+  vertical: false, // Vertical inteligente: recorte 9:16 a partir da câmera deitada
+  follow: true,    // no Vertical, o recorte acompanha o rosto
+  grid: false,
+  guide916: false,
+  // Áudio
+  micId: '',       // '' = microfone padrão
+  audioMode: 'voz', // 'voz' (tratado) | 'cru'
+  gainDb: 0,       // 0–20 dB, com limitador
+  gate: false,     // atenua o fundo nas pausas
 };
 
 const SAMPLE = {
@@ -101,7 +113,13 @@ export function importJson(raw) {
 }
 
 export function loadSettings() {
-  return { ...DEFAULT_SETTINGS, ...read(SETTINGS_KEY, {}) };
+  const saved = read(SETTINGS_KEY, {});
+  // v3 tinha só "hd" (boolean); agora é "res".
+  if ('hd' in saved) {
+    saved.res ??= saved.hd ? 1080 : 720;
+    delete saved.hd;
+  }
+  return { ...DEFAULT_SETTINGS, ...saved };
 }
 
 export function saveSettings(settings) {

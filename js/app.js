@@ -10,6 +10,7 @@ const ACTION_ICONS = {
   import: 'upload', export: 'download', new: 'plus', back: 'arrow-left', duplicate: 'copy',
   delete: 'trash-2', close: 'x', restart: 'rotate-ccw', slower: 'minus', faster: 'plus',
   toggle: 'play', settings: 'settings', 'settings-close': 'x', record: 'video',
+  av: 'sliders-horizontal', 'av-close': 'x',
 };
 for (const btn of document.querySelectorAll('[data-action]')) {
   const name = ACTION_ICONS[btn.dataset.action];
@@ -45,6 +46,7 @@ const FORMAT = {
   margin: (v) => v + '%',
   guidePos: (v) => v + '%',
   countdown: (v) => (v ? v + ' s' : 'desligada'),
+  gainDb: (v) => (v ? '+' + v + ' dB' : '0 dB'),
 };
 function syncSettingsForm() {
   for (const input of document.querySelectorAll('[data-setting]')) {
@@ -57,11 +59,16 @@ function syncSettingsForm() {
 }
 for (const input of document.querySelectorAll('[data-setting]')) {
   input.addEventListener('input', () => {
-    setSetting(input.dataset.setting, input.type === 'checkbox' ? input.checked : Number(input.value));
+    const v = input.type === 'checkbox' ? input.checked
+      : input.tagName === 'SELECT' && !('number' in input.dataset) ? input.value
+      : Number(input.value);
+    setSetting(input.dataset.setting, v);
   });
 }
 
 const prompter = createPrompter({ getSettings, setSetting, toast });
+// Leitura de estado para diagnóstico/testes automatizados (somente leitura).
+globalThis.__teleprompter = { debug: prompter.debug };
 
 // ---------- Navegação ----------
 // history.state.d = profundidade dentro do app, para o "voltar" não sair do PWA.
@@ -221,8 +228,13 @@ const ACTIONS = {
   slower: () => prompter.changeSpeed(-1),
   faster: () => prompter.changeSpeed(1),
   record: () => prompter.toggleRecording(),
-  settings: () => { syncSettingsForm(); $('settings').hidden = false; },
+  settings: () => { prompter.closeAv(); syncSettingsForm(); $('settings').hidden = false; },
   'settings-close': () => { $('settings').hidden = true; },
+  av: () => { syncSettingsForm(); prompter.openAv(); },
+  'av-close': () => prompter.closeAv(),
+  'mic-test': () => prompter.testMic(),
+  'mic-play-raw': () => prompter.playTest('raw'),
+  'mic-play-processed': () => prompter.playTest('processed'),
   'rec-save': () => prompter.saveRecording(),
   'rec-share': () => prompter.shareRecording(),
   'rec-discard': () => { if (confirm('Descartar esta gravação?')) prompter.discardRecording(); },
