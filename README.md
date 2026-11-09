@@ -36,7 +36,7 @@ Teleprompter para celular em forma de **PWA**: você instala pelo navegador, sem
   - opção de silenciar o fundo nas pausas (noise gate);
   - medidor de nível;
   - **teste de microfone** de 5 s com comparação entre som cru e tratado.
-- A tela não apaga durante a leitura (Wake Lock). Tela cheia ao abrir o teleprompter.
+- A tela não apaga durante a leitura (Wake Lock).
 - Teclado ou pedal Bluetooth:
   - espaço inicia ou pausa;
   - ↑ e ↓ mudam a velocidade;

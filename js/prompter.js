@@ -255,14 +255,6 @@ export function createPrompter({ getSettings, setSetting, toast }) {
   screen.orientation?.addEventListener('change', onResize);
   video.addEventListener('resize', () => positionOverlay());
 
-  function enterFullscreen() {
-    const el = document.documentElement;
-    if (!document.fullscreenElement && el.requestFullscreen) el.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
-  }
-  function exitFullscreen() {
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-  }
-
   // ---------- Câmera ----------
   async function startCamera() {
     const ok = await capture.start();
@@ -502,7 +494,6 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     maxPos = 0;
     sheets.forEach((id) => { $(id).hidden = true; });
     closeRecording();
-    enterFullscreen();
     lockScreen();
     applySettings();
     renderState();
@@ -529,7 +520,6 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     closeRecording();
     wakeLock?.release().catch(() => {});
     wakeLock = null;
-    exitFullscreen();
     active = false;
     cameraMode = false;
   }
