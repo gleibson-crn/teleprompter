@@ -14,47 +14,103 @@ const LOOKAHEAD_MS = 200;    // no vertical gerado, o recorte antecipa o movimen
 const LOST_AFTER_MS = 1500;  // sem rosto por esse tempo → volta devagar ao centro
 
 let detectorPromise = null;
+const VENDOR_FILES = ['vision_bundle.mjs', 'wasm/vision_wasm_internal.js', 'wasm/vision_wasm_internal.wasm', 'blaze_face_short_range.tflite'];
+const vendorBase = () => new URL('../vendor/mediapipe/', import.meta.url).href;
 
-/** Detector de rosto: nativo (Shape Detection API) se existir; senão MediaPipe local. */
-function loadDetector() {
-  detectorPromise ??= (async () => {
-    if ('FaceDetector' in window) {
-      try {
-        const native = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 3 });
-        return {
-          async detect(video) {
-            const faces = await native.detect(video);
-            return faces.map((f) => f.boundingBox);
-          },
-        };
-      } catch { /* cai no MediaPipe */ }
-    }
-    const { FaceDetector } = await import('../vendor/mediapipe/vision_bundle.mjs');
-    const base = new URL('../vendor/mediapipe/', import.meta.url).href;
-    const fileset = {
-      wasmLoaderPath: base + 'wasm/vision_wasm_internal.js',
-      wasmBinaryPath: base + 'wasm/vision_wasm_internal.wasm',
-    };
-    const create = (delegate) => FaceDetector.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: base + 'blaze_face_short_range.tflite', delegate },
-      runningMode: 'VIDEO',
-      minDetectionConfidence: 0.5,
-    });
-    const mp = await create('GPU').catch(() => create('CPU'));
-    // Garante tudo no cache offline (na 1ª visita o import pode sair antes do service
-    // worker assumir a página). O que já está em cache é servido por ele, sem novo download.
-    globalThis.caches?.open(VENDOR_CACHE)
-      .then((c) => c.addAll(['vision_bundle.mjs', 'wasm/vision_wasm_internal.js', 'wasm/vision_wasm_internal.wasm', 'blaze_face_short_range.tflite'].map((f) => base + f)))
-      .catch(() => {});
+/** Recorta a janela do quadro e reduz para o detector. */
+function drawWindow(ctx, video, rx, ry, side) {
+  ctx.drawImage(video, rx, ry, side, side, 0, 0, DET_SIZE, DET_SIZE);
+}
+
+/** MediaPipe num Web Worker: a detecção não disputa a thread que desenha a tela. */
+async function workerDetector() {
+  const worker = new Worker(new URL('./face-worker.js', import.meta.url), { type: 'module' });
+  let seq = 0;
+  const pending = new Map();
+  const failAll = (err) => { for (const p of pending.values()) p.reject(err); pending.clear(); };
+  worker.onmessage = ({ data }) => {
+    const p = pending.get(data.id);
+    pending.delete(data.id);
+    if (data.error) p?.reject(new Error(data.error)); else p?.resolve(data);
+  };
+  worker.onerror = (e) => { e.preventDefault?.(); failAll(new Error(e.message || 'worker')); };
+  const call = (msg, transfer = []) => new Promise((resolve, reject) => {
+    const id = ++seq;
+    pending.set(id, { resolve, reject });
+    worker.postMessage({ ...msg, id }, transfer);
+  });
+  try {
+    const { engine } = await call({ type: 'init' });
     return {
-      async detect(video) {
-        const r = mp.detectForVideo(video, performance.now());
-        return r.detections.map((d) => {
-          const b = d.boundingBox;
-          return { x: b.originX, y: b.originY, width: b.width, height: b.height };
-        });
+      engine: `MediaPipe ${engine} · worker`,
+      async detect(video, rx, ry, side) {
+        const bitmap = await createImageBitmap(video, rx, ry, side, side, { resizeWidth: DET_SIZE, resizeHeight: DET_SIZE, resizeQuality: 'low' });
+        return (await call({ type: 'detect', bitmap }, [bitmap])).faces;
       },
     };
+  } catch (err) {
+    worker.terminate();
+    throw err;
+  }
+}
+
+/** Reserva: MediaPipe na thread principal (bloqueia a tela durante cada detecção). */
+async function mainThreadDetector() {
+  const { FaceDetector } = await import('../vendor/mediapipe/vision_bundle.mjs');
+  const base = vendorBase();
+  const fileset = {
+    wasmLoaderPath: base + 'wasm/vision_wasm_internal.js',
+    wasmBinaryPath: base + 'wasm/vision_wasm_internal.wasm',
+  };
+  const create = (delegate) => FaceDetector.createFromOptions(fileset, {
+    baseOptions: { modelAssetPath: base + 'blaze_face_short_range.tflite', delegate },
+    runningMode: 'VIDEO',
+    minDetectionConfidence: 0.5,
+  });
+  let engine = 'GPU';
+  const mp = await create('GPU').catch(() => { engine = 'CPU'; return create('CPU'); });
+  const c = document.createElement('canvas');
+  c.width = c.height = DET_SIZE;
+  const ctx = c.getContext('2d');
+  return {
+    engine: `MediaPipe ${engine} · principal`,
+    async detect(video, rx, ry, side) {
+      drawWindow(ctx, video, rx, ry, side);
+      return mp.detectForVideo(c, performance.now()).detections.map((d) => {
+        const bb = d.boundingBox;
+        return { x: bb.originX, y: bb.originY, width: bb.width, height: bb.height };
+      });
+    },
+  };
+}
+
+/** Detector de rosto: MediaPipe em worker; senão nativo (Shape Detection); senão MediaPipe na thread principal. */
+function loadDetector() {
+  detectorPromise ??= (async () => {
+    let det = null;
+    if (window.Worker && window.createImageBitmap) det = await workerDetector().catch(() => null);
+    if (!det && 'FaceDetector' in window) {
+      try {
+        const native = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 3 });
+        const c = document.createElement('canvas');
+        c.width = c.height = DET_SIZE;
+        const ctx = c.getContext('2d');
+        det = {
+          engine: 'nativo',
+          async detect(video, rx, ry, side) {
+            drawWindow(ctx, video, rx, ry, side);
+            return (await native.detect(c)).map((f) => f.boundingBox);
+          },
+        };
+      } catch { /* segue */ }
+    }
+    det ??= await mainThreadDetector();
+    // Garante tudo no cache offline (na 1ª visita o carregamento pode sair antes do service
+    // worker assumir a página). O que já está em cache é servido por ele, sem novo download.
+    if (det.engine.startsWith('MediaPipe')) {
+      globalThis.caches?.open(VENDOR_CACHE).then((c) => c.addAll(VENDOR_FILES.map((f) => vendorBase() + f))).catch(() => {});
+    }
+    return det;
   })();
   detectorPromise.catch(() => { detectorPromise = null; });
   return detectorPromise;
@@ -95,11 +151,9 @@ export function createReframe(video, canvas, { follow = true, onStatus = () => {
   let scan = 0;
   let hadFace = false; // a última detecção achou o rosto? (senão já varre as laterais)
   let moving = false;
-  const detCanvas = document.createElement('canvas');
-  detCanvas.width = detCanvas.height = DET_SIZE;
-  // Sem willReadFrequently: o canvas fica na GPU (cópia do quadro sem passar pela CPU).
-  const detCtx = detCanvas.getContext('2d');
-  const state = { center: 0, target: 0, faces: 0, mode: 'center', detections: 0, detectMs: 0 };
+  const state = { center: 0, target: 0, faces: 0, mode: 'center', detections: 0, detectMs: 0, engine: '', fps: 0 };
+  let fpsCount = 0;
+  let fpsT0 = 0;
   let paused = false;
   let path = null; // caminho do recorte durante a gravação: [{ t (ms desde o início), c (centro) }]
   let pathT0 = 0;
@@ -107,7 +161,7 @@ export function createReframe(video, canvas, { follow = true, onStatus = () => {
   if (follow) {
     onStatus('loading');
     loadDetector()
-      .then((d) => { detector = d; onStatus('ready'); })
+      .then((d) => { detector = d; state.engine = d.engine; onStatus('ready'); })
       .catch(() => onStatus('error'));
   }
 
@@ -139,10 +193,9 @@ export function createReframe(video, canvas, { follow = true, onStatus = () => {
         const cx = found ? target : [side / 2, sw - side / 2][(target < sw / 2 ? 1 : 0) ^ (scan++ & 1)];
         const rx = Math.round(Math.max(0, Math.min(sw - side, cx - side / 2)));
         const ry = Math.round((sh - side) / 2);
-        detCtx.drawImage(video, rx, ry, side, side, 0, 0, DET_SIZE, DET_SIZE);
         const k = side / DET_SIZE;
         const t0 = performance.now();
-        detector.detect(detCanvas).then((faces) => {
+        detector.detect(video, rx, ry, side).then((faces) => {
           state.detections++;
           state.detectMs = Math.round(performance.now() - t0);
           if (faces.length) {
@@ -162,6 +215,9 @@ export function createReframe(video, canvas, { follow = true, onStatus = () => {
       center = Math.max(half, Math.min(sw - half, center));
       ctx.drawImage(video, Math.round(center - half), Math.round((sh - h) / 2), w, h, 0, 0, w, h);
       path?.push({ t: performance.now() - pathT0, c: center });
+      // Quadros por segundo do preview (diagnóstico no painel Câmera e áudio).
+      fpsCount++;
+      if (now - fpsT0 >= 1000) { state.fps = Math.round((fpsCount * 1000) / (now - fpsT0)); fpsCount = 0; fpsT0 = now; }
       Object.assign(state, { center, target, mode: detector ? 'follow' : 'center' });
     }
     schedule();
@@ -246,7 +302,7 @@ export async function renderVertical(blob, path, { fps = 30, mimeType = '', onPr
     const chunks = [];
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
     const stopped = new Promise((res) => { rec.onstop = res; });
-    const total = (path.length ? path[path.length - 1].t / 1000 : 0) || video.duration || 1;
+    const total = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : (path.length ? path[path.length - 1].t / 1000 : 1);
     const draw = (sec) => {
       const c = centerAt(path, sec * 1000 + LOOKAHEAD_MS, sw / 2);
       const x = Math.round(Math.max(0, Math.min(sw - w, c - w / 2)));

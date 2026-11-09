@@ -38,6 +38,7 @@ export function createPrompter({ getSettings, setSetting, toast }) {
   let recBlobs = {};
   let recSel = 'h';
   let renderAbort = null;
+  let recInfo = null; // diagnóstico do caminho do recorte da última gravação
   let wakeLock = null;
   let meterTimer = 0;
   let restarting = false;
@@ -292,6 +293,13 @@ export function createPrompter({ getSettings, setSetting, toast }) {
   }
 
   function renderMeter() {
+    // Desempenho do Vertical inteligente, ao vivo no painel (para diagnosticar travadas).
+    const rf = capture.reframeState();
+    const perf = $('perf-info');
+    perf.hidden = !rf;
+    if (rf && !$('av').hidden) {
+      perf.textContent = `Desempenho: preview ${rf.fps || '–'} fps · detector ${rf.engine || 'carregando'}${rf.detectMs ? ` · ${rf.detectMs} ms` : ''}`;
+    }
     const lv = capture.level();
     if (!lv) return;
     // -60 dBFS → 0%, 0 dBFS → 100%
@@ -396,9 +404,10 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     });
     recorder.ondataavailable = (e) => e.data.size && recChunks.push(e.data);
     recorder.onstop = showRecording;
-    // O caminho do recorte começa junto com o vídeo (t = 0 do arquivo).
-    recorder.onstart = () => recVertical?.begin();
     // Sem timeslice: um único bloco no fim, em vez de picos de trabalho a cada segundo.
+    // O caminho do recorte conta do start() (t = 0 do arquivo); o 'onstart' chega atrasado
+    // enquanto o codificador inicia, e o vídeo já cobre esse intervalo.
+    recVertical?.begin();
     recorder.start();
     recStart = Date.now();
     $('rec-badge').hidden = false;
@@ -445,6 +454,7 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     recChunks = [];
     recorder = null;
     const path = recVertical?.end();
+    recInfo = path && { points: path.length, first: Math.round(path[0]?.t ?? 0), last: Math.round(path.at(-1)?.t ?? 0) };
     recVertical = null;
     const dual = !!path;
     $('rec-formats').hidden = !dual;
@@ -598,6 +608,6 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     closeAv: () => { $('av').hidden = true; stopTestAudio(); },
     testMic,
     playTest,
-    debug: () => ({ reframe: capture.reframeState(), size: capture.videoSize(), vertical: capture.isVertical(), level: capture.level(), rendering: !!renderAbort, formats: Object.keys(recBlobs) }),
+    debug: () => ({ reframe: capture.reframeState(), size: capture.videoSize(), vertical: capture.isVertical(), level: capture.level(), rendering: !!renderAbort, formats: Object.keys(recBlobs), recInfo }),
   };
 }
