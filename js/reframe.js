@@ -4,6 +4,7 @@
 
 const DETECT_EVERY_MS = 125;
 const DET_SIZE = 256;        // lado da janela enviada ao detector
+const VENDOR_CACHE = 'teleprompter-vendor-mediapipe-0.10.34'; // igual ao sw.js
 const DEAD_ZONE = 0.05;      // fração da largura da fonte: dentro disso não começa a mexer
 const SETTLE = 0.012;        // já andando: para quando chega tão perto do alvo
 const SMOOTH_TAU = 0.35;     // s — quanto maior, mais suave
@@ -38,6 +39,11 @@ function loadDetector() {
       minDetectionConfidence: 0.5,
     });
     const mp = await create('GPU').catch(() => create('CPU'));
+    // Garante tudo no cache offline (na 1ª visita o import pode sair antes do service
+    // worker assumir a página). O que já está em cache é servido por ele, sem novo download.
+    globalThis.caches?.open(VENDOR_CACHE)
+      .then((c) => c.addAll(['vision_bundle.mjs', 'wasm/vision_wasm_internal.js', 'wasm/vision_wasm_internal.wasm', 'blaze_face_short_range.tflite'].map((f) => base + f)))
+      .catch(() => {});
     return {
       async detect(video) {
         const r = mp.detectForVideo(video, performance.now());
