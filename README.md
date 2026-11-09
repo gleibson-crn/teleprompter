@@ -23,7 +23,9 @@ Teleprompter para celular em forma de **PWA**: você instala pelo navegador, sem
   - gravação de áudio e vídeo **sem o texto**;
   - o vídeo é salvo em MP4 quando o navegador suporta (WebM nos demais) ou enviado pelo compartilhar.
 - **Vertical inteligente (9:16):**
-  - com o celular deitado, a câmera grava em 1080p e o app recorta ao vivo um vídeo vertical de 608×1080 que **acompanha o seu rosto**;
+  - com o celular deitado, a câmera grava em 1080p e o preview mostra ao vivo o recorte vertical que **acompanha o seu rosto**;
+  - ao parar, você recebe **dois vídeos**: o horizontal (1920×1080) e o vertical (608×1080), gerado logo depois da gravação (leva mais ou menos a duração do vídeo; mantenha o app aberto);
+  - durante a gravação só o horizontal é codificado (mais leve); o vertical gerado antecipa o movimento em 0,2 s, compensando o atraso do acompanhamento;
   - o recorte usa suavização e zona morta para não tremer;
   - o detector de rosto (MediaPipe, ~12 MB) é baixado na 1ª vez que você liga o modo e depois funciona offline.
 - **Câmera e áudio** (botão de controles na tela da câmera):
@@ -74,7 +76,7 @@ Câmera, service worker e Wake Lock exigem HTTPS ou `localhost`.
 | `js/prompter.js` | Rolagem, gestos, contagem, Wake Lock, layout da câmera, painel Câmera e áudio, gravação |
 | `js/capture.js` | Abre câmera e microfone, decide o que é gravado, controles de câmera, teste de microfone |
 | `js/audio.js` | Cadeia de áudio (Web Audio): filtro, presença, compressor, ganho, noise gate, limitador, medidor |
-| `js/reframe.js` | Vertical inteligente: recorte 9:16 em canvas e acompanhamento do rosto |
+| `js/reframe.js` | Vertical inteligente: preview 9:16, acompanhamento do rosto, caminho do recorte e geração do vertical após a gravação |
 | `vendor/mediapipe/` | MediaPipe Tasks Vision 0.10.34 + modelo BlazeFace (Apache-2.0), carregado sob demanda |
 | `js/store.js` | Persistência em `localStorage` |
 | `js/icons.js` | Ícones [Lucide](https://lucide.dev) (ISC) |

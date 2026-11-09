@@ -120,7 +120,7 @@
       <h3 class="sheet-sub"><span data-icon="video"></span>Vídeo</h3>
       <div class="toggles">
         <label class="toggle"><input type="checkbox" data-setting="vertical" data-restart><span data-icon="rectangle-vertical"></span>Vertical inteligente (9:16)</label>
-        <p class="hint">Deite o celular na horizontal: o app recorta um vídeo vertical e acompanha você. Na 1ª vez baixa o detector de rosto (~12 MB).</p>
+        <p class="hint">Deite o celular na horizontal. O preview mostra o recorte vertical acompanhando você; ao parar, você recebe <strong>dois vídeos</strong>: o horizontal e o vertical (gerado logo após a gravação, leva mais ou menos a duração do vídeo — mantenha o app aberto). Na 1ª vez baixa o detector de rosto (~12 MB).</p>
         <label class="toggle"><input type="checkbox" data-setting="follow" data-restart><span data-icon="scan-face"></span>Seguir o rosto</label>
         <label class="toggle"><input type="checkbox" data-setting="grid"><span data-icon="grid-3x3"></span>Grade (regra dos terços)</label>
         <label class="toggle"><input type="checkbox" data-setting="guide916"><span data-icon="rectangle-vertical"></span>Guia vertical 9:16 (no modo normal)</label>
@@ -174,6 +174,10 @@
     <!-- Resultado da gravação -->
     <div id="rec-result" class="sheet" hidden>
       <div class="sheet-head"><h2>Gravação pronta</h2></div>
+      <div id="rec-formats" class="segmented" role="tablist" hidden>
+        <button id="rec-tab-h" class="seg on" role="tab" data-action="rec-show-h"><span data-icon="rectangle-horizontal"></span>Horizontal</button>
+        <button id="rec-tab-v" class="seg" role="tab" data-action="rec-show-v"><span data-icon="rectangle-vertical"></span><span id="rec-v-label">Vertical</span></button>
+      </div>
       <video id="rec-preview" class="rec-preview" controls playsinline></video>
       <div class="actions wide">
         <button class="btn secondary" data-action="rec-discard"><span class="btn-ico" data-icon="trash-2"></span>Descartar</button>

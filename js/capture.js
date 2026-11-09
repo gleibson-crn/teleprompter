@@ -1,4 +1,4 @@
-// Captura: câmera + microfone (cadeia de áudio) + Vertical inteligente (canvas).
+// Captura: câmera + microfone (cadeia de áudio) + Vertical inteligente (preview em canvas).
 // Decide o que é gravado e expõe os controles de câmera que o aparelho suporta.
 import { audioConstraints, createAudioChain, listMics } from './audio.js';
 import { createReframe } from './reframe.js';
@@ -81,26 +81,22 @@ export function createCapture({ video, canvas, getSettings, setSetting, toast, o
     key = '';
   }
 
-  /** Stream a gravar (vídeo da câmera ou do canvas + áudio tratado) e bitrate adequado. */
+  /**
+   * Stream a gravar (câmera + áudio tratado) e bitrate adequado. Sempre o quadro horizontal
+   * direto da câmera (um só codificador, o mais leve). No Vertical inteligente, `vertical`
+   * grava o caminho do recorte para gerar o 9:16 depois (renderVertical).
+   */
   function recording() {
     const s = getSettings();
-    let vTrack;
-    let w;
-    let h;
-    const fromCanvas = !!reframe;
-    if (fromCanvas) {
-      vTrack = canvas.captureStream(s.fps).getVideoTracks()[0];
-      ({ width: w, height: h } = canvas);
-    } else {
-      vTrack = stream.getVideoTracks()[0];
-      ({ width: w = 1280, height: h = 720 } = vTrack.getSettings());
-    }
-    const fps = vTrack.getSettings().frameRate || s.fps;
+    const vTrack = stream.getVideoTracks()[0];
+    const { width: w = 1280, height: h = 720, frameRate } = vTrack.getSettings();
+    const fps = frameRate || s.fps;
+    const rf = reframe;
     return {
       stream: new MediaStream([vTrack, ...chain.stream.getAudioTracks()]),
       videoBitsPerSecond: Math.max(2_500_000, Math.round(w * h * fps * 0.13)),
-      // A trilha do canvas é criada por gravação; a da câmera continua em uso no preview.
-      dispose: () => { if (fromCanvas) vTrack.stop(); },
+      fps: Math.round(fps),
+      vertical: rf && { begin: () => rf.beginPath(), end: () => rf.endPath() },
     };
   }
 
@@ -177,6 +173,7 @@ export function createCapture({ video, canvas, getSettings, setSetting, toast, o
     testMic,
     micInfo,
     reframeState: () => reframe?.state,
+    pauseReframe: (v) => reframe?.pause(v),
     isVertical: () => !!reframe,
     videoSize: () => (reframe ? { w: canvas.width, h: canvas.height } : { w: video.videoWidth, h: video.videoHeight }),
   };

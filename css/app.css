@@ -191,7 +191,19 @@ button, input, textarea { font: inherit; color: inherit; }
 .toggles { display: grid; gap: 4px; margin-top: 8px; }
 .toggle { display: flex; align-items: center; gap: 10px; padding: 10px 4px; cursor: pointer; }
 .toggle input { width: 20px; height: 20px; accent-color: var(--accent); }
-.rec-preview { width: 100%; max-height: 50dvh; background: #000; border-radius: 10px; margin: 8px 0 12px; }
+.rec-preview { display: block; width: 100%; max-height: 50dvh; background: #000; border-radius: 10px; margin: 8px 0 12px; }
+.segmented {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin: 4px 0 2px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 999px;
+}
+.seg {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 38px; border: 0; border-radius: 999px; background: transparent; color: var(--muted);
+  font-weight: 600; font-size: 14px; cursor: pointer; font-variant-numeric: tabular-nums;
+}
+.seg .ico { width: 18px; height: 18px; }
+.seg.on { background: var(--surface-2); color: var(--text); }
+.seg:disabled { cursor: progress; }
 
 .toast {
   position: fixed; left: 50%; bottom: calc(96px + var(--safe-bottom)); transform: translateX(-50%);

@@ -1,8 +1,8 @@
 // Motor do teleprompter: rolagem por tempo (independe do FPS), gestos, contagem
-// regressiva, Wake Lock, tela cheia e — no modo câmera — preview + gravação.
+// regressiva, Wake Lock e — no modo câmera — preview + gravação (horizontal + vertical gerado).
 import { icon } from './icons.js';
 import { createCapture, pickMime } from './capture.js';
-import { cropSize } from './reframe.js';
+import { cropSize, renderVertical } from './reframe.js';
 
 const $ = (id) => document.getElementById(id);
 const LINE_HEIGHT = 1.35;
@@ -29,11 +29,15 @@ export function createPrompter({ getSettings, setSetting, toast }) {
   let active = false;
   let cameraMode = false;
   let recorder = null;
-  let recDispose = null;
   let recChunks = [];
   let recStart = 0;
   let recTimer = 0;
-  let recBlob = null;
+  let recVertical = null; // gravação no Vertical inteligente: { end() → caminho do recorte }
+  let recFps = 30;
+  // Resultado: blobs por formato ('h' horizontal, 'v' vertical) e o formato exibido.
+  let recBlobs = {};
+  let recSel = 'h';
+  let renderAbort = null;
   let wakeLock = null;
   let meterTimer = 0;
   let restarting = false;
@@ -383,7 +387,8 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     const rec = capture.recording();
     const mimeType = pickMime('video');
     recChunks = [];
-    recDispose = rec.dispose;
+    recVertical = rec.vertical;
+    recFps = rec.fps;
     recorder = new MediaRecorder(rec.stream, {
       ...(mimeType && { mimeType }),
       videoBitsPerSecond: rec.videoBitsPerSecond,
@@ -391,6 +396,8 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     });
     recorder.ondataavailable = (e) => e.data.size && recChunks.push(e.data);
     recorder.onstop = showRecording;
+    // O caminho do recorte começa junto com o vídeo (t = 0 do arquivo).
+    recorder.onstart = () => recVertical?.begin();
     // Sem timeslice: um único bloco no fim, em vez de picos de trabalho a cada segundo.
     recorder.start();
     recStart = Date.now();
@@ -434,36 +441,88 @@ export function createPrompter({ getSettings, setSetting, toast }) {
 
   function showRecording() {
     const type = recorder.mimeType || recChunks[0]?.type || 'video/webm';
-    recBlob = new Blob(recChunks, { type });
+    recBlobs = { h: new Blob(recChunks, { type }) };
+    recChunks = [];
     recorder = null;
-    recDispose?.();
-    recDispose = null;
-    const preview = $('rec-preview');
-    preview.src = URL.createObjectURL(recBlob);
+    const path = recVertical?.end();
+    recVertical = null;
+    const dual = !!path;
+    $('rec-formats').hidden = !dual;
+    showFormat('h');
     const file = recFile();
     $('btn-rec-share').hidden = !(navigator.canShare && navigator.canShare({ files: [file] }));
     $('rec-result').hidden = false;
+    if (dual) makeVertical(path, type);
     // Algo pedido durante a gravação (ex.: trocar microfone) fica para agora.
-    if (cameraMode && capture.needsRestart()) restartCamera();
+    else if (cameraMode && capture.needsRestart()) restartCamera();
+  }
+
+  /** Gera o vertical (9:16) a partir do horizontal + caminho do recorte. */
+  async function makeVertical(path, type) {
+    const tab = $('rec-tab-v');
+    const label = $('rec-v-label');
+    tab.disabled = true;
+    label.textContent = 'Gerando 0%';
+    const ctrl = new AbortController();
+    renderAbort = ctrl;
+    // Libera o aparelho: o preview ao vivo e a detecção param enquanto o vertical é gerado.
+    capture.pauseReframe(true);
+    try {
+      const blob = await renderVertical(recBlobs.h, path, {
+        fps: recFps,
+        mimeType: pickMime('video') || type,
+        signal: ctrl.signal,
+        onProgress: (f) => { label.textContent = `Gerando ${Math.floor(f * 100)}%`; },
+      });
+      if (!blob || ctrl.signal.aborted) return;
+      recBlobs.v = blob;
+      label.textContent = 'Vertical';
+      tab.disabled = false;
+      toast('Vídeo vertical pronto.');
+    } catch {
+      if (!ctrl.signal.aborted) { label.textContent = 'Vertical (falhou)'; toast('Não foi possível gerar o vertical.'); }
+    } finally {
+      if (renderAbort === ctrl) renderAbort = null;
+      capture.pauseReframe(false);
+      if (!ctrl.signal.aborted && cameraMode && capture.needsRestart()) restartCamera();
+    }
+  }
+
+  function showFormat(f) {
+    if (!recBlobs[f]) return;
+    recSel = f;
+    const preview = $('rec-preview');
+    preview.pause();
+    if (preview.src) URL.revokeObjectURL(preview.src);
+    preview.src = URL.createObjectURL(recBlobs[f]);
+    $('rec-tab-h').classList.toggle('on', f === 'h');
+    $('rec-tab-v').classList.toggle('on', f === 'v');
   }
 
   function recFile() {
-    const ext = recBlob.type.includes('mp4') ? 'mp4' : 'webm';
+    const blob = recBlobs[recSel];
+    const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
     const d = new Date();
     const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
-    return new File([recBlob], `teleprompter-${stamp}.${ext}`, { type: recBlob.type });
+    const suffix = $('rec-formats').hidden ? '' : recSel === 'v' ? '-vertical' : '-horizontal';
+    return new File([blob], `teleprompter-${stamp}${suffix}.${ext}`, { type: blob.type });
   }
 
   function closeRecording() {
+    renderAbort?.abort();
+    renderAbort = null;
     const preview = $('rec-preview');
     preview.pause();
     if (preview.src) URL.revokeObjectURL(preview.src);
     preview.removeAttribute('src');
     preview.load(); // descarrega a mídia; sem isso o áudio segue tocando em segundo plano
-    recBlob = null;
+    recBlobs = {};
+    recSel = 'h';
     $('rec-result').hidden = true;
   }
 
+  // Com dois formatos, salvar/compartilhar um não fecha a tela (falta o outro).
+  const dualPending = () => !$('rec-formats').hidden;
   function saveRecording() {
     const file = recFile();
     const a = document.createElement('a');
@@ -471,14 +530,18 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     a.download = file.name;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-    toast('Vídeo salvo em Downloads.');
-    closeRecording();
+    if (dualPending()) {
+      toast(`${recSel === 'v' ? 'Vertical' : 'Horizontal'} salvo em Downloads.`);
+    } else {
+      toast('Vídeo salvo em Downloads.');
+      closeRecording();
+    }
   }
 
   async function shareRecording() {
     try {
       await navigator.share({ files: [recFile()], title: 'Teleprompter' });
-      closeRecording();
+      if (!dualPending()) closeRecording();
     } catch { /* cancelado */ }
   }
 
@@ -510,7 +573,8 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     if (isRecording()) {
       recorder.onstop = null;
       stopRecording();
-      recDispose?.();
+      recVertical?.end();
+      recVertical = null;
       recorder = null;
     }
     pause();
@@ -527,13 +591,13 @@ export function createPrompter({ getSettings, setSetting, toast }) {
   return {
     open, close, applySettings, toggle, changeSpeed,
     restart: () => { pause(); cancelCountdown(); setPos(0); },
-    toggleRecording, saveRecording, shareRecording, discardRecording: closeRecording,
+    toggleRecording, saveRecording, shareRecording, discardRecording: closeRecording, showFormat,
     isRecording,
     isCamera: () => cameraMode,
     openAv: () => { $('settings').hidden = true; $('av').hidden = false; renderAv(); },
     closeAv: () => { $('av').hidden = true; stopTestAudio(); },
     testMic,
     playTest,
-    debug: () => ({ reframe: capture.reframeState(), size: capture.videoSize(), vertical: capture.isVertical(), level: capture.level() }),
+    debug: () => ({ reframe: capture.reframeState(), size: capture.videoSize(), vertical: capture.isVertical(), level: capture.level(), rendering: !!renderAbort, formats: Object.keys(recBlobs) }),
   };
 }

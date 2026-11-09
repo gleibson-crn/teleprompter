@@ -261,6 +261,8 @@ const ACTIONS = {
   'mic-play-processed': () => prompter.playTest('processed'),
   'rec-save': () => prompter.saveRecording(),
   'rec-share': () => prompter.shareRecording(),
+  'rec-show-h': () => prompter.showFormat('h'),
+  'rec-show-v': () => prompter.showFormat('v'),
   'rec-discard': async () => {
     if (await ask({ title: 'Descartar esta gravação?', message: 'O vídeo será apagado e não dá para recuperar.', ok: 'Descartar' })) prompter.discardRecording();
   },
