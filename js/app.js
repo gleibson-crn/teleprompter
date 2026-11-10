@@ -7,7 +7,7 @@ const $ = (id) => document.getElementById(id);
 
 // Ícones dos botões por ação (e spans com data-icon)
 const ACTION_ICONS = {
-  import: 'upload', export: 'download', new: 'plus', back: 'arrow-left', duplicate: 'copy',
+  import: 'upload', export: 'download', new: 'plus', back: 'arrow-left', paste: 'clipboard-paste',
   delete: 'trash-2', close: 'x', restart: 'rotate-ccw', slower: 'minus', faster: 'plus',
   toggle: 'play', settings: 'settings', 'settings-close': 'x', record: 'video',
   av: 'sliders-horizontal', 'av-close': 'x',
@@ -139,6 +139,7 @@ function render() {
   if (route === 'edit') {
     $('edit-title').value = script.title;
     $('edit-text').value = script.text;
+    textTouched = false;
     updateStats();
     show('view-edit');
   } else if (route === 'play' || route === 'cam') {
@@ -196,6 +197,9 @@ function flushSave() {
 }
 $('edit-title').addEventListener('input', scheduleSave);
 $('edit-text').addEventListener('input', () => { updateStats(); scheduleSave(); });
+// O usuário já posicionou o cursor no texto? (senão o Colar vai para o fim)
+let textTouched = false;
+$('edit-text').addEventListener('focus', () => { textTouched = true; });
 window.addEventListener('pagehide', flushSave);
 
 // ---------- Importar / exportar ----------
@@ -229,13 +233,25 @@ const ACTIONS = {
   import: () => $('import-input').click(),
   export: () => download(`teleprompter-roteiros-${new Date().toISOString().slice(0, 10)}.json`, store.exportScripts(), 'application/json'),
   back: () => { flushSave(); back('#/'); },
-  duplicate: () => {
-    flushSave();
-    const s = store.getScript(currentId);
-    const copy = store.createScript(`${s.title || 'Sem título'} (cópia)`, s.text);
-    history.replaceState(history.state, '', `#/edit/${copy.id}`);
-    render();
-    toast('Roteiro duplicado.');
+  // Cola a área de transferência no texto: no cursor, ou no fim se ainda não tocou no texto.
+  paste: async () => {
+    const ta = $('edit-text');
+    let clip = '';
+    try {
+      clip = await navigator.clipboard.readText();
+    } catch {
+      toast('Sem acesso à área de transferência. Toque e segure no texto e escolha Colar.');
+      return;
+    }
+    if (!clip) { toast('A área de transferência está vazia.'); return; }
+    if (!textTouched) {
+      if (ta.value && !ta.value.endsWith('\n')) clip = '\n' + clip;
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+    }
+    ta.focus();
+    ta.setRangeText(clip, ta.selectionStart, ta.selectionEnd, 'end');
+    ta.dispatchEvent(new Event('input'));
+    toast('Texto colado.');
   },
   delete: async () => {
     if (!(await ask({ title: 'Excluir este roteiro?', message: 'Não dá para desfazer.', ok: 'Excluir' }))) return;

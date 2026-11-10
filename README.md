@@ -8,7 +8,7 @@ Teleprompter para celular em forma de **PWA**: você instala pelo navegador, sem
 
 ## Recursos
 
-- Vários roteiros, com autosave, duplicar, excluir e contagem de palavras e tempo estimado.
+- Vários roteiros, com autosave, colar da área de transferência, excluir e contagem de palavras e tempo estimado.
 - Rolagem automática com velocidade ajustável ao vivo (− / +).
 - Toque inicia ou pausa a rolagem. Arrastar posiciona o texto.
 - Ajustes salvos no aparelho:
