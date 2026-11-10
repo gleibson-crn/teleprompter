@@ -396,6 +396,7 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     const mimeType = pickMime('video');
     recChunks = [];
     recVertical = rec.vertical;
+    if (capture.isVertical() && !recVertical) toast('Celular em pé: o vídeo já sai na vertical.');
     recFps = rec.fps;
     recorder = new MediaRecorder(rec.stream, {
       ...(mimeType && { mimeType }),

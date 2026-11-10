@@ -96,7 +96,8 @@ export function createCapture({ video, canvas, getSettings, setSetting, toast, o
       stream: new MediaStream([vTrack, ...chain.stream.getAudioTracks()]),
       videoBitsPerSecond: Math.max(2_500_000, Math.round(w * h * fps * 0.13)),
       fps: Math.round(fps),
-      vertical: rf && { begin: () => rf.beginPath(), end: () => rf.endPath() },
+      // Celular em pé: a câmera já entrega o quadro vertical — grava um vídeo só, sem gerar outro.
+      vertical: rf && video.videoWidth > video.videoHeight ? { begin: () => rf.beginPath(), end: () => rf.endPath() } : null,
     };
   }
 

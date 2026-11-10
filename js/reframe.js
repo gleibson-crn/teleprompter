@@ -181,7 +181,9 @@ export function createReframe(video, canvas, { follow = true, onStatus = () => {
       const dt = lastT ? Math.min((now - lastT) / 1000, 0.1) : 0;
       lastT = now;
 
-      if (detector && !busy && now - lastDetect > DETECT_EVERY_MS) {
+      // Celular em pé: o quadro já é vertical e o recorte é ele inteiro — nada a seguir.
+      const portrait = sw - w < 2;
+      if (detector && !portrait && !busy && now - lastDetect > DETECT_EVERY_MS) {
         lastDetect = now;
         busy = true;
         // O modelo reduz a entrada a 128 px: no quadro 16:9 inteiro o rosto some.
@@ -218,7 +220,7 @@ export function createReframe(video, canvas, { follow = true, onStatus = () => {
       // Quadros por segundo do preview (diagnóstico no painel Câmera e áudio).
       fpsCount++;
       if (now - fpsT0 >= 1000) { state.fps = Math.round((fpsCount * 1000) / (now - fpsT0)); fpsCount = 0; fpsT0 = now; }
-      Object.assign(state, { center, target, mode: detector ? 'follow' : 'center' });
+      Object.assign(state, { center, target, mode: portrait ? 'portrait' : detector ? 'follow' : 'center' });
     }
     schedule();
   }

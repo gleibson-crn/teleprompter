@@ -24,6 +24,7 @@ Teleprompter para celular em forma de **PWA**: você instala pelo navegador, sem
   - o vídeo é salvo em MP4 quando o navegador suporta (WebM nos demais) ou enviado pelo compartilhar.
 - **Vertical inteligente (9:16):**
   - com o celular deitado, a câmera grava em 1080p e o preview mostra ao vivo o recorte vertical que **acompanha o seu rosto**;
+  - com o celular **em pé**, a câmera já entrega o quadro vertical: o app grava um vídeo só, em resolução cheia, e não procura o rosto (não há o que recortar);
   - ao parar, você recebe **dois vídeos**: o horizontal (1920×1080) e o vertical (608×1080), gerado logo depois da gravação (leva mais ou menos a duração do vídeo; mantenha o app aberto);
   - durante a gravação só o horizontal é codificado (mais leve); o vertical gerado antecipa o movimento em 0,2 s, compensando o atraso do acompanhamento;
   - o recorte usa suavização e zona morta para não tremer; o detector de rosto roda numa thread separada (Web Worker), sem travar a tela;
