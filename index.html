@@ -170,6 +170,14 @@
         <audio id="mic-test-audio" hidden></audio>
       </div>
       <p class="hint">Microfone Bluetooth costuma gravar com qualidade de ligação (abafado). Para voz, prefira o do celular, com fio ou USB.</p>
+
+      <h3 class="sheet-sub"><span data-icon="gauge"></span>Diagnóstico</h3>
+      <p class="hint">Grava 8 s com os ajustes atuais (nada é salvo) e mede onde o celular engasga: codificador de vídeo, câmera, quadros perdidos e travadas da tela.</p>
+      <button id="btn-diag" class="btn secondary" data-action="diag"><span class="btn-ico" data-icon="gauge"></span>Diagnóstico de gravação (8 s)</button>
+      <div id="diag-result" class="diag" hidden>
+        <pre id="diag-out" class="diag-out"></pre>
+        <button class="btn primary" data-action="diag-copy"><span class="btn-ico" data-icon="copy"></span>Copiar</button>
+      </div>
     </div>
 
     <!-- Resultado da gravação -->

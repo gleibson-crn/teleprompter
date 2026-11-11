@@ -3,6 +3,7 @@
 import { icon } from './icons.js';
 import { createCapture, pickMime } from './capture.js';
 import { cropSize, renderVertical } from './reframe.js';
+import { runDiagnostics } from './diag.js';
 
 const $ = (id) => document.getElementById(id);
 const LINE_HEIGHT = 1.35;
@@ -352,6 +353,46 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     }));
   }
 
+  // ---------- Diagnóstico de gravação ----------
+  let diagRunning = false;
+  async function runDiag() {
+    if (!capture.active() || isRecording() || renderAbort || diagRunning) {
+      toast(isRecording() ? 'Pare a gravação antes do diagnóstico.' : 'Abra a câmera para o diagnóstico.');
+      return;
+    }
+    diagRunning = true;
+    const btn = $('btn-diag');
+    const label = btn.lastChild;
+    const original = label.textContent;
+    btn.disabled = true;
+    btnRec.disabled = true;
+    $('diag-result').hidden = true;
+    try {
+      await capture.resumeAudio();
+      const text = await runDiagnostics({
+        capture, video, settings: getSettings(),
+        onStatus: (msg) => { label.textContent = msg; },
+      });
+      $('diag-out').textContent = text;
+      $('diag-result').hidden = false;
+    } catch (e) {
+      toast('O diagnóstico falhou: ' + (e?.message || e));
+    } finally {
+      label.textContent = original;
+      btn.disabled = false;
+      btnRec.disabled = false;
+      diagRunning = false;
+    }
+  }
+  async function copyDiag() {
+    try {
+      await navigator.clipboard.writeText($('diag-out').textContent);
+      toast('Diagnóstico copiado. Cole na conversa.');
+    } catch {
+      toast('Não deu para copiar. Toque e segure no texto para selecionar.');
+    }
+  }
+
   let micTest = null;
   async function testMic() {
     if (!capture.active() || isRecording()) return;
@@ -431,6 +472,7 @@ export function createPrompter({ getSettings, setSetting, toast }) {
   }
 
   async function toggleRecording() {
+    if (diagRunning) return;
     if (isRecording()) {
       stopRecording();
       pause();
@@ -609,6 +651,8 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     closeAv: () => { $('av').hidden = true; stopTestAudio(); },
     testMic,
     playTest,
+    runDiag,
+    copyDiag,
     debug: () => ({ reframe: capture.reframeState(), size: capture.videoSize(), vertical: capture.isVertical(), level: capture.level(), rendering: !!renderAbort, formats: Object.keys(recBlobs), recInfo }),
   };
 }

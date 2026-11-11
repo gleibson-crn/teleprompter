@@ -317,6 +317,13 @@ button, input, textarea { font: inherit; color: inherit; }
 .field select:disabled, .toggle input:disabled { opacity: .5; }
 .mic-test { display: grid; gap: 10px; margin: 10px 0; }
 .toggle .ico { width: 20px; height: 20px; }
+.diag { display: grid; gap: 10px; margin: 10px 0; justify-items: start; }
+.diag-out {
+  width: 100%; margin: 0; padding: 10px 12px; max-height: 40dvh; overflow: auto;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+  font: 12px/1.5 ui-monospace, "Cascadia Mono", Menlo, monospace; color: var(--text);
+  white-space: pre-wrap; word-break: break-word;
+}
 
 /* Celular deitado: painéis viram coluna lateral, sem cobrir a tela inteira */
 @media (orientation: landscape) and (max-height: 600px) {

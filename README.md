@@ -40,6 +40,7 @@ Teleprompter para celular em forma de **PWA**: você instala pelo navegador, sem
   - opção de silenciar o fundo nas pausas (noise gate);
   - medidor de nível;
   - **teste de microfone** de 5 s com comparação entre som cru e tratado.
+  - **diagnóstico de gravação** (8 s, nada é salvo): mostra o codificador de vídeo (hardware × software), quadros reais da câmera e do arquivo, maior buraco entre quadros e travadas da tela; botão Copiar para enviar o relatório.
 - A tela não apaga durante a leitura (Wake Lock).
 - Teclado ou pedal Bluetooth:
   - espaço inicia ou pausa;
@@ -78,6 +79,7 @@ Câmera, service worker e Wake Lock exigem HTTPS ou `localhost`.
 | `js/prompter.js` | Rolagem, gestos, contagem, Wake Lock, layout da câmera, painel Câmera e áudio, gravação |
 | `js/capture.js` | Abre câmera e microfone, decide o que é gravado, controles de câmera, teste de microfone |
 | `js/audio.js` | Cadeia de áudio (Web Audio): filtro, presença, compressor, ganho, noise gate, limitador, medidor |
+| `js/diag.js` | Diagnóstico de gravação (codificadores, quadros do MP4, travadas) |
 | `js/face-worker.js` | Detector de rosto (MediaPipe) num Web Worker, fora da thread que desenha a tela |
 | `js/reframe.js` | Vertical inteligente: preview 9:16, acompanhamento do rosto, caminho do recorte e geração do vertical após a gravação |
 | `vendor/mediapipe/` | MediaPipe Tasks Vision 0.10.34 + modelo BlazeFace (Apache-2.0), carregado sob demanda |
