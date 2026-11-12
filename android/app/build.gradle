@@ -10,6 +10,8 @@ android {
         // No CI: VERSION_CODE = número da execução; VERSION_NAME = tag (ou "dev").
         versionCode((System.getenv("VERSION_CODE") ?: "1") as Integer)
         versionName(System.getenv("VERSION_NAME") ?: "1.0-dev")
+        // Só ARM (celulares): o detector de rosto traz bibliotecas nativas por arquitetura.
+        ndk { abiFilters 'arm64-v8a', 'armeabi-v7a' }
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -56,6 +58,11 @@ dependencies {
     implementation "androidx.camera:camera-lifecycle:$cameraxVersion"
     implementation "androidx.camera:camera-video:$cameraxVersion"
     implementation "androidx.camera:camera-view:$cameraxVersion"
+    // Vertical inteligente: rosto (ML Kit, modelo dentro do app) e export 9:16 (Media3).
+    implementation "com.google.mlkit:face-detection:$mlkitFaceVersion"
+    implementation "androidx.media3:media3-transformer:$media3Version"
+    implementation "androidx.media3:media3-effect:$media3Version"
+    implementation "androidx.media3:media3-common:$media3Version"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

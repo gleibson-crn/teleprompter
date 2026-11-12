@@ -22,6 +22,7 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.provider.Settings;
 import android.util.Range;
+import android.util.Size;
 import android.view.Display;
 import android.view.View;
 import android.view.ViewGroup;
@@ -31,6 +32,10 @@ import android.webkit.WebView;
 import androidx.camera.core.Camera;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.DynamicRange;
+import androidx.camera.core.ImageAnalysis;
+import androidx.camera.core.resolutionselector.AspectRatioStrategy;
+import androidx.camera.core.resolutionselector.ResolutionSelector;
+import androidx.camera.core.resolutionselector.ResolutionStrategy;
 import androidx.camera.core.Preview;
 import androidx.camera.core.ZoomState;
 import androidx.camera.lifecycle.ProcessCameraProvider;
@@ -66,7 +71,10 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Câmera e gravação NATIVAS (CameraX) para o Teleprompter.
@@ -101,6 +109,17 @@ public class TeleprompterCameraPlugin extends Plugin {
     private int activeFps = 30;
     private DisplayManager.DisplayListener displayListener;
 
+    // Vertical inteligente (etapa 2): detecção de rosto + caminho do recorte + export 9:16.
+    private ImageAnalysis analysis;
+    private ExecutorService analysisExec;
+    private Reframer reframer;
+    private final VerticalExporter exporter = new VerticalExporter();
+    private File exportOut;
+    private File lastRecFile;
+    private List<Reframer.Point> lastPath;
+    private int lastW;
+    private int lastH;
+
     @Override
     public void load() {
         getActivity().runOnUiThread(() -> {
@@ -133,14 +152,18 @@ public class TeleprompterCameraPlugin extends Plugin {
         final String facing = call.getString("facing", "user");
         final int quality = call.getInt("quality", 1080);
         final int fps = call.getInt("fps", 30);
+        final boolean vertical = Boolean.TRUE.equals(call.getBoolean("vertical", false));
         final Context ctx = getContext();
         final ListenableFuture<ProcessCameraProvider> future = ProcessCameraProvider.getInstance(ctx);
         future.addListener(() -> {
             try {
                 provider = future.get();
+                setupReframer(vertical);
                 bind(facing, quality, fps);
                 showPreview(true);
-                call.resolve(cameraInfo());
+                JSObject info = cameraInfo();
+                info.put("follow", analysis != null);
+                call.resolve(info);
             } catch (Exception e) {
                 call.reject("Não foi possível abrir a câmera: " + e.getMessage(), "CAMERA", e);
             }
@@ -184,7 +207,56 @@ public class TeleprompterCameraPlugin extends Plugin {
             .setTargetRotation(rotation)
             .build();
         preview.setSurfaceProvider(previewView.getSurfaceProvider());
-        camera = provider.bindToLifecycle((LifecycleOwner) getActivity(), selector, preview, videoCapture);
+        LifecycleOwner owner = (LifecycleOwner) getActivity();
+        if (reframer != null) {
+            // Quadros pequenos (16:9, mesmo campo de visão do vídeo) só para achar o rosto.
+            analysis = new ImageAnalysis.Builder()
+                .setResolutionSelector(new ResolutionSelector.Builder()
+                    .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
+                    .setResolutionStrategy(new ResolutionStrategy(new Size(640, 360),
+                        ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER))
+                    .build())
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+                .setTargetRotation(rotation)
+                .build();
+            analysis.setAnalyzer(analysisExec, reframer);
+            try {
+                camera = provider.bindToLifecycle(owner, selector, preview, videoCapture, analysis);
+                return;
+            } catch (IllegalArgumentException e) {
+                // Aparelho não aguenta os 3 fluxos juntos: grava sem seguir (recorte no centro).
+                provider.unbindAll();
+                analysis = null;
+            }
+        }
+        camera = provider.bindToLifecycle(owner, selector, preview, videoCapture);
+    }
+
+    /** Liga/desliga o detector de rosto conforme o Vertical inteligente. */
+    private void setupReframer(boolean vertical) {
+        analysis = null;
+        if (!vertical) {
+            if (reframer != null) reframer.close();
+            reframer = null;
+            return;
+        }
+        if (analysisExec == null) analysisExec = Executors.newSingleThreadExecutor();
+        if (reframer == null) {
+            reframer = new Reframer((c, faces) -> {
+                JSObject ev = new JSObject();
+                ev.put("c", c);
+                ev.put("faces", faces);
+                notifyListeners("reframe", ev);
+            });
+        }
+        reframer.setEnabled(isLandscape());
+    }
+
+    /** Celular deitado (rotação 90/270): só aí o vertical é um recorte do quadro. */
+    private boolean isLandscape() {
+        int r = displayRotation();
+        return r == android.view.Surface.ROTATION_90 || r == android.view.Surface.ROTATION_270;
     }
 
     private boolean supportsFps(int fps) {
@@ -224,6 +296,7 @@ public class TeleprompterCameraPlugin extends Plugin {
             camera = null;
             preview = null;
             videoCapture = null;
+            analysis = null;
             showPreview(false);
             call.resolve();
         });
@@ -242,6 +315,10 @@ public class TeleprompterCameraPlugin extends Plugin {
                 @Override public void onDisplayChanged(int id) {
                     int rot = displayRotation();
                     if (preview != null) preview.setTargetRotation(rot);
+                    if (recording == null) {
+                        if (analysis != null) analysis.setTargetRotation(rot);
+                        if (reframer != null) reframer.setEnabled(isLandscape());
+                    }
                     // Durante a gravação a orientação do arquivo fica a do início.
                     if (videoCapture != null && recording == null) videoCapture.setTargetRotation(rot);
                 }
@@ -284,7 +361,13 @@ public class TeleprompterCameraPlugin extends Plugin {
             boolean audio = ContextCompat.checkSelfPermission(getContext(), Manifest.permission.RECORD_AUDIO)
                 == PackageManager.PERMISSION_GRANTED;
             if (audio) pending = pending.withAudioEnabled();
+            if (reframer != null) {
+                reframer.setEnabled(isLandscape());
+                if (analysis != null) analysis.setTargetRotation(displayRotation());
+            }
             recording = pending.start(ContextCompat.getMainExecutor(getContext()), event -> {
+                // Caminho do recorte conta do início real da gravação (t = 0 do arquivo).
+                if (event instanceof VideoRecordEvent.Start && reframer != null && analysis != null) reframer.beginPath();
                 if (event instanceof VideoRecordEvent.Finalize) onFinalize((VideoRecordEvent.Finalize) event);
             });
             JSObject r = new JSObject();
@@ -308,6 +391,7 @@ public class TeleprompterCameraPlugin extends Plugin {
         final File f = recFile;
         final long durNs = ev.getRecordingStats().getRecordedDurationNanos();
         final int error = ev.getError();
+        final List<Reframer.Point> path = reframer != null ? reframer.endPath() : null;
         new Thread(() -> {
             JSObject r = new JSObject();
             r.put("path", f.getAbsolutePath());
@@ -318,6 +402,18 @@ public class TeleprompterCameraPlugin extends Plugin {
             if (ok) {
                 r.put("bytes", f.length());
                 readMetadata(f, r);
+            }
+            // Deitado e com caminho: dá para gerar o vertical (makeVertical).
+            int w = r.optInt("width", 0);
+            int h = r.optInt("height", 0);
+            boolean dual = ok && path != null && path.size() > 1 && w > h;
+            r.put("vertical", dual);
+            if (path != null) r.put("pathPoints", path.size());
+            if (dual) {
+                lastRecFile = f;
+                lastPath = path;
+                lastW = w;
+                lastH = h;
             }
             getActivity().runOnUiThread(() -> {
                 if (stopCall != null) {
@@ -389,8 +485,70 @@ public class TeleprompterCameraPlugin extends Plugin {
         if (recording != null) recording.stop();
     }
 
+    // ---------------------------------------------------------------- vertical
+
+    /** Gera o vertical 9:16 da última gravação (caminho do recorte guardado no Finalize). */
+    @PluginMethod
+    public void makeVertical(PluginCall call) {
+        File f = ownFile(call);
+        if (f == null || !f.equals(lastRecFile) || lastPath == null) {
+            call.reject("Sem caminho do recorte para esta gravação.");
+            return;
+        }
+        final List<Reframer.Point> path = lastPath;
+        final int w = lastW;
+        final int h = lastH;
+        getActivity().runOnUiThread(() -> {
+            String base = f.getName().replaceFirst("\\.mp4$", "");
+            final File out = new File(recDir(), base + "-vertical.mp4");
+            exportOut = out;
+            try {
+                exporter.start(getContext(), f, out, path, w, h, new VerticalExporter.Callback() {
+                    @Override public void onProgress(int percent) {
+                        JSObject ev = new JSObject();
+                        ev.put("p", percent);
+                        notifyListeners("verticalProgress", ev);
+                    }
+                    @Override public void onDone(File o) {
+                        exportOut = null;
+                        new Thread(() -> {
+                            JSObject r = new JSObject();
+                            r.put("path", o.getAbsolutePath());
+                            r.put("ok", o.exists() && o.length() > 0);
+                            readMetadata(o, r);
+                            call.resolve(r);
+                        }).start();
+                    }
+                    @Override public void onError(String message) {
+                        exportOut = null;
+                        call.reject("Não foi possível gerar o vertical: " + message);
+                    }
+                });
+            } catch (Exception e) {
+                exportOut = null;
+                call.reject("Não foi possível gerar o vertical: " + e.getMessage(), "EXPORT", e);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void cancelVertical(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            if (exporter.running()) {
+                exporter.cancel();
+                if (exportOut != null) //noinspection ResultOfMethodCallIgnored
+                    exportOut.delete();
+                exportOut = null;
+            }
+            call.resolve();
+        });
+    }
+
     @Override
     protected void handleOnDestroy() {
+        exporter.cancel();
+        if (reframer != null) reframer.close();
+        if (analysisExec != null) analysisExec.shutdown();
         if (provider != null) provider.unbindAll();
         super.handleOnDestroy();
     }
