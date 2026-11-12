@@ -8,6 +8,7 @@ import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.hardware.display.DisplayManager;
@@ -58,9 +59,12 @@ import com.google.common.util.concurrent.ListenableFuture;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
 
@@ -114,6 +118,8 @@ public class TeleprompterCameraPlugin extends Plugin {
         File[] old = dir.listFiles((d, name) -> name.startsWith(REC_PREFIX) && name.endsWith(".mp4"));
         if (old != null) for (File f : old) //noinspection ResultOfMethodCallIgnored
             f.delete();
+        //noinspection ResultOfMethodCallIgnored
+        updateFile().delete(); // APK de uma atualização já instalada (ou abandonada)
     }
 
     // ---------------------------------------------------------------- preview
@@ -526,5 +532,83 @@ public class TeleprompterCameraPlugin extends Plugin {
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         getContext().startActivity(i);
         call.resolve();
+    }
+
+    // ---------------------------------------------------------------- atualização
+
+    /** Só baixa APK das Releases DESTE repositório. */
+    private static final String UPDATE_PREFIX = "https://github.com/gleibson-crn/teleprompter/releases/download/";
+
+    private File updateFile() {
+        return new File(new File(getContext().getCacheDir(), "updates"), "update.apk");
+    }
+
+    @PluginMethod
+    public void appVersion(PluginCall call) {
+        try {
+            PackageInfo pi = getContext().getPackageManager().getPackageInfo(getContext().getPackageName(), 0);
+            JSObject r = new JSObject();
+            r.put("name", pi.versionName);
+            r.put("code", pi.getLongVersionCode());
+            call.resolve(r);
+        } catch (Exception e) {
+            call.reject(e.getMessage());
+        }
+    }
+
+    /**
+     * Baixa o APK novo e abre o instalador do Android (o usuário só toca em Instalar).
+     * App fora da loja não pode se instalar sem esse toque. O Android também recusa um
+     * APK assinado com outra chave, então um arquivo trocado não substitui o app.
+     */
+    @PluginMethod
+    public void installUpdate(PluginCall call) {
+        final String url = call.getString("url", "");
+        if (!url.startsWith(UPDATE_PREFIX) || !url.endsWith(".apk")) {
+            call.reject("Endereço de atualização inválido.", "URL");
+            return;
+        }
+        final Context ctx = getContext();
+        if (!ctx.getPackageManager().canRequestPackageInstalls()) {
+            Intent i = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:" + ctx.getPackageName()));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(i);
+            call.reject("Ative \"Permitir desta fonte\" para o Teleprompter e volte ao app.", "PERMISSION");
+            return;
+        }
+        new Thread(() -> {
+            File apk = updateFile();
+            //noinspection ResultOfMethodCallIgnored
+            apk.getParentFile().mkdirs();
+            HttpURLConnection c = null;
+            try {
+                c = (HttpURLConnection) new URL(url).openConnection();
+                c.setConnectTimeout(15000);
+                c.setReadTimeout(30000);
+                if (c.getResponseCode() != HttpURLConnection.HTTP_OK) throw new IOException("HTTP " + c.getResponseCode());
+                try (InputStream in = c.getInputStream(); OutputStream out = new FileOutputStream(apk)) {
+                    byte[] buf = new byte[64 * 1024];
+                    int n;
+                    while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                }
+                PackageInfo pi = ctx.getPackageManager().getPackageArchiveInfo(apk.getPath(), 0);
+                if (pi == null || !ctx.getPackageName().equals(pi.packageName)) {
+                    throw new IOException("o arquivo baixado não é o Teleprompter");
+                }
+                Uri uri = FileProvider.getUriForFile(ctx, ctx.getPackageName() + ".fileprovider", apk);
+                Intent i = new Intent(Intent.ACTION_VIEW);
+                i.setDataAndType(uri, "application/vnd.android.package-archive");
+                i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(i);
+                call.resolve();
+            } catch (Exception e) {
+                //noinspection ResultOfMethodCallIgnored
+                apk.delete();
+                call.reject("Não foi possível baixar a atualização: " + e.getMessage(), "DOWNLOAD", e);
+            } finally {
+                if (c != null) c.disconnect();
+            }
+        }).start();
     }
 }

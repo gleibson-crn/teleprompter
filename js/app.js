@@ -35,11 +35,12 @@ function toast(msg, { onClick, sticky = false } = {}) {
 // Esc, "voltar" do Android e toque fora do cartão = Cancelar.
 const askDialog = $('ask');
 askDialog.addEventListener('click', (e) => { if (e.target === askDialog) askDialog.close(); });
-function ask({ title, message = '', ok, icon: ico = 'trash-2' }) {
+function ask({ title, message = '', ok, icon: ico = 'trash-2', danger = true }) {
   $('ask-title').textContent = title;
   $('ask-msg').textContent = message;
   $('ask-ico').innerHTML = icon(ico);
   $('ask-ok').textContent = ok;
+  $('ask-ok').className = danger ? 'btn danger' : 'btn primary';
   askDialog.returnValue = '';
   askDialog.showModal();
   return new Promise((resolve) => {
@@ -297,6 +298,52 @@ document.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-action]');
   if (btn) ACTIONS[btn.dataset.action]?.();
 });
+
+// ---------- APK: aviso de nova versão (Releases do GitHub) ----------
+// App fora da loja não se instala sozinho: o app baixa o APK e abre o instalador (1 toque).
+const RELEASES_API = 'https://api.github.com/repos/gleibson-crn/teleprompter/releases/latest';
+const parseVer = (v) => /^v?(\d+)\.(\d+)\.(\d+)$/.exec(v || '')?.slice(1).map(Number) || null;
+const newer = (a, b) => { for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i]; return false; };
+let pendingUpdate = null; // URL do APK enquanto o usuário libera "instalar apps desconhecidos"
+
+async function installUpdate(url) {
+  toast('Baixando a atualização…');
+  try {
+    await NativeCam.installUpdate({ url });
+    pendingUpdate = null;
+  } catch (e) {
+    pendingUpdate = e?.code === 'PERMISSION' ? url : null;
+    toast(e?.message || String(e), { sticky: e?.code === 'PERMISSION' });
+  }
+}
+
+async function checkUpdate() {
+  try {
+    const { name } = await NativeCam.appVersion();
+    const cur = parseVer(name);
+    if (!cur) return; // build de teste (ex.: 1.0.12-main): não oferece atualização
+    const r = await fetch(RELEASES_API, { headers: { Accept: 'application/vnd.github+json' } });
+    if (!r.ok) return;
+    const rel = await r.json();
+    const next = parseVer(rel.tag_name);
+    const apk = rel.assets?.find((a) => a.name.endsWith('.apk'));
+    if (!next || !apk || !newer(next, cur)) return;
+    const ok = await ask({
+      title: 'Nova versão disponível',
+      message: `A versão ${rel.tag_name} está pronta (você tem ${name}). Baixar e instalar agora? Os roteiros continuam.`,
+      ok: 'Atualizar', icon: 'download', danger: false,
+    });
+    if (ok) installUpdate(apk.browser_download_url);
+  } catch { /* sem internet: tenta na próxima abertura */ }
+}
+
+if (isNative) {
+  checkUpdate();
+  // Voltou dos ajustes depois de liberar a instalação: continua de onde parou.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && pendingUpdate) installUpdate(pendingUpdate);
+  });
+}
 
 // ---------- Service worker (offline + aviso de nova versão) ----------
 // No APK os arquivos vêm dentro do app (atualiza instalando o APK novo): sem service worker.

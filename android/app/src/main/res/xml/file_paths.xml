@@ -2,4 +2,6 @@
 <!-- Só a pasta de gravações do app pode ser compartilhada (nada do armazenamento geral). -->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <external-files-path name="recordings" path="Movies/" />
+    <!-- APK de atualização baixado pelo app, entregue ao instalador do Android. -->
+    <cache-path name="updates" path="updates/" />
 </paths>

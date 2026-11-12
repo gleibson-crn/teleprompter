@@ -76,7 +76,7 @@ Para esses recursos, use o PWA por enquanto.
 **Instalar (sem loja):**
 1. Uma vez só: Configurações → Sistema → **Opções do desenvolvedor** → permitir apps de **desenvolvedores não verificados**. É a regra do Android em vigor desde 30/09/2026 no Brasil, com uma espera única de 24 h.
 2. Abra a [página de Releases](https://github.com/gleibson-crn/teleprompter/releases) no celular, baixe o `.apk` da versão mais nova e toque nele para instalar.
-3. Para atualizar, instale o APK mais novo por cima. Os roteiros continuam.
+3. **Atualizações:** ao abrir, o app consulta as Releases. Se houver versão nova, mostra **Atualizar**, baixa o APK e abre o instalador do Android; você só toca em **Instalar**. App fora da loja não pode se atualizar sem esse toque. Na 1ª vez, o Android pede para **permitir instalar apps desta fonte** (o Teleprompter); depois de liberar, volte ao app e a instalação continua. Os roteiros continuam.
 
 **Roteiros:**
 - O APK guarda os roteiros separados do PWA.
