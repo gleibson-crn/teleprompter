@@ -20,7 +20,12 @@ const keyOf = (s) => [s.facing, s.res, s.fps].join('|');
  * teleprompter não precisar saber de onde vem a câmera. O que é só da web (áudio tratado,
  * Vertical inteligente, diagnóstico) responde vazio aqui e fica escondido no APK.
  */
-export function createNativeCapture({ video, getSettings, toast, ask, onFinished }) {
+function setOptionDisabled(setting, value, disabled) {
+  const opt = document.querySelector(`select[data-setting="${setting}"] option[value="${value}"]`);
+  if (opt) opt.disabled = disabled;
+}
+
+export function createNativeCapture({ video, getSettings, setSetting, toast, ask, onFinished }) {
   let open = false;
   let key = '';
   let info = null;
@@ -52,13 +57,24 @@ export function createNativeCapture({ video, getSettings, toast, ask, onFinished
       return false;
     }
     zoom = info.zoom || 1;
-    if (info.maxHeight && s.res > info.maxHeight) {
-      toast(`A câmera ${s.facing === 'environment' ? 'traseira' : 'frontal'} deste celular grava no máximo ${info.maxHeight}p.`);
-    } else if (s.fps > 30 && info.fps < s.fps) toast(`Esta câmera não grava a ${s.fps} fps aqui — usando ${info.fps}.`);
+    // Trava no seletor o que ESTA câmera não grava (a frontal do moto g41 para em 720p).
+    const lado = s.facing === 'environment' ? 'traseira' : 'frontal';
+    const no1080 = !!info.maxHeight && info.maxHeight < 1080;
+    const no60 = !info.fps60;
+    setOptionDisabled('res', 1080, no1080);
+    setOptionDisabled('fps', 60, no60);
+    if (no1080 && s.res > info.maxHeight) {
+      setSetting('res', 720);
+      toast(`A câmera ${lado} deste celular grava até 720p — ajustado para 720p.`);
+    }
+    if (no60 && s.fps > 30) {
+      setSetting('fps', 30);
+      toast(`A câmera ${lado} deste celular grava até 30 fps — ajustado para 30.`);
+    }
     // O <video> não toca nada: só ocupa a área do preview (grade/guia se posicionam por ele).
     video.hidden = false;
     document.documentElement.classList.add('native-cam');
-    key = keyOf(s);
+    key = keyOf(getSettings());
     open = true;
     return true;
   }

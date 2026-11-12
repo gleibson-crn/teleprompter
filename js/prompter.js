@@ -50,7 +50,7 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
   let restarting = false;
 
   const capture = isNative ? createNativeCapture({
-    video, getSettings, toast, ask,
+    video, getSettings, setSetting, toast, ask,
     onFinished: (r) => nativeFinished(r), // app foi para segundo plano gravando
   }) : createCapture({
     video, canvas, getSettings, setSetting, toast,
