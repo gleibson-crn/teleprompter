@@ -54,6 +54,50 @@ Teleprompter para celular em forma de **PWA**: você instala pelo navegador, sem
 2. Menu ⋮ → **Instalar app** ou **Adicionar à tela inicial**.
 3. Pronto: o app abre como aplicativo e funciona sem internet.
 
+## APK Android (gravação nativa)
+
+Em aparelhos onde o Chrome não usa o codificador de vídeo do chip, use o **APK**. Exemplo: no moto g41, o PWA gravava ~4 fps em 1080p.
+
+A interface é a mesma, mas a câmera, o preview e a gravação são **nativos** (CameraX):
+- 1080p/720p a 30 fps (60 se o aparelho suportar);
+- áudio do microfone;
+- zoom;
+- arquivo sem espelhar.
+
+Ao terminar, a tela mostra a resolução, o fps real e o codificador usado.
+
+Ainda não existem no APK (ficam escondidos):
+- Vertical inteligente;
+- tratamento de áudio (escolha de microfone, modo Voz, ganho);
+- diagnóstico.
+
+Para esses recursos, use o PWA por enquanto.
+
+**Instalar (sem loja):**
+1. Uma vez só: Configurações → Sistema → **Opções do desenvolvedor** → permitir apps de **desenvolvedores não verificados**. É a regra do Android em vigor desde 30/09/2026 no Brasil, com uma espera única de 24 h.
+2. Abra a [página de Releases](https://github.com/gleibson-crn/teleprompter/releases) no celular, baixe o `.apk` da versão mais nova e toque nele para instalar.
+3. Para atualizar, instale o APK mais novo por cima. Os roteiros continuam.
+
+**Roteiros:**
+- O APK guarda os roteiros separados do PWA.
+- Para levar os roteiros: no PWA, **Exportar** (gera um `.json`); no APK, **Importar** esse arquivo.
+- No APK, Exportar grava em **Downloads**.
+- Os vídeos salvos vão para a galeria em **Movies/Teleprompter**.
+
+**Publicar uma versão do APK:** crie e envie uma tag `v*`, por exemplo `git tag v1.0.1` seguido de `git push origin v1.0.1`. O workflow [android.yml](.github/workflows/android.yml) compila, assina, confere o certificado e cria a Release. Todo push na main também gera o APK como artefato da execução.
+
+**Assinatura:**
+- O keystore fica **fora do repositório**, em `%USERPROFILE%\.android-keys\teleprompter\`, com a senha em `LEIA-SENHA.txt`.
+- No GitHub ficam os secrets `ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` e `ANDROID_KEY_PASSWORD`, mais a variável `EXPECTED_CERT_SHA256`.
+- **Guarde uma cópia do keystore.** Sem ele, uma nova versão não instala por cima: é preciso desinstalar e os roteiros se perdem.
+
+**Estrutura do APK:**
+- `package.json` e `capacitor.config.json`: configuração do Capacitor.
+- `tools/build-web.mjs`: copia o site para `www/`.
+- `android/`: projeto nativo. O plugin fica em `android/app/src/main/java/io/github/gleibsoncrn/teleprompter/TeleprompterCameraPlugin.java`.
+- `js/native.js`: ponte da página com o plugin; no navegador não faz nada.
+- Ícones do Android: `node tools/make-icons.mjs`.
+
 ## Rodar localmente
 
 ```bash
@@ -79,6 +123,7 @@ Câmera, service worker e Wake Lock exigem HTTPS ou `localhost`.
 | `js/prompter.js` | Rolagem, gestos, contagem, Wake Lock, layout da câmera, painel Câmera e áudio, gravação |
 | `js/capture.js` | Abre câmera e microfone, decide o que é gravado, controles de câmera, teste de microfone |
 | `js/audio.js` | Cadeia de áudio (Web Audio): filtro, presença, compressor, ganho, noise gate, limitador, medidor |
+| `js/native.js` | Ponte com o APK (Capacitor): câmera/gravação nativas; no navegador não faz nada |
 | `js/diag.js` | Diagnóstico de gravação (codificadores, quadros do MP4, travadas) |
 | `js/face-worker.js` | Detector de rosto (MediaPipe) num Web Worker, fora da thread que desenha a tela |
 | `js/reframe.js` | Vertical inteligente: preview 9:16, acompanhamento do rosto, caminho do recorte e geração do vertical após a gravação |

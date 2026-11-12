@@ -20,9 +20,10 @@ const LINES = [
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
 const mix = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
 
-function draw(size, { maskable }) {
+function draw(size, { maskable, pad: padIn }) {
   const px = Buffer.alloc(size * size * 3);
-  const pad = maskable ? 0.18 : 0.04; // maskable: conteúdo na zona segura (80%)
+  // maskable: conteúdo na zona segura (80%); adaptativo do Android: zona segura 66/108 → pad maior
+  const pad = padIn ?? (maskable ? 0.18 : 0.04);
   const s = 1 - pad * 2;
   const thick = 0.075 * s * size;
   const bandH = 0.11 * s * size;
@@ -87,3 +88,15 @@ writeFileSync(new URL('icon-512.png', out), draw(512, { maskable: false }));
 writeFileSync(new URL('icon-maskable-512.png', out), draw(512, { maskable: true }));
 writeFileSync(new URL('apple-touch-icon.png', out), draw(180, { maskable: true }));
 console.log('Ícones gerados em icons/');
+
+// APK: ícones do launcher (adaptativo + legado) nas densidades do Android.
+const res = new URL('../android/app/src/main/res/', import.meta.url);
+const DENS = { mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4 };
+for (const [d, k] of Object.entries(DENS)) {
+  const dir = new URL(`mipmap-${d}/`, res);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(new URL('ic_launcher.png', dir), draw(48 * k, { maskable: true }));
+  writeFileSync(new URL('ic_launcher_round.png', dir), draw(48 * k, { maskable: true }));
+  writeFileSync(new URL('ic_launcher_foreground.png', dir), draw(108 * k, { maskable: true, pad: 0.24 }));
+}
+console.log('Ícones do Android gerados em android/app/src/main/res/');
