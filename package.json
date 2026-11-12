@@ -1,0 +1,16 @@
+{
+  "name": "teleprompter",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Teleprompter: PWA (GitHub Pages, sem build) + APK Android (Capacitor, câmera nativa CameraX).",
+  "type": "module",
+  "scripts": {
+    "build:web": "node tools/build-web.mjs",
+    "android:sync": "node tools/build-web.mjs && cap sync android"
+  },
+  "devDependencies": {
+    "@capacitor/android": "8.6.0",
+    "@capacitor/cli": "8.6.0",
+    "@capacitor/core": "8.6.0"
+  }
+}

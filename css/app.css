@@ -213,6 +213,13 @@ button, input, textarea { font: inherit; color: inherit; }
 }
 .toast.clickable { cursor: pointer; border-color: var(--accent); }
 
+/* ---------- APK: preview nativo atrás da página ---------- */
+/* A câmera nativa é desenhada ATRÁS da WebView: com ela aberta, nada pode ter fundo opaco. */
+html.native-cam body, html.native-cam .prompter { background: transparent; }
+html.native-cam .cam-video { visibility: hidden; }
+/* Recursos que ainda só existem na versão web */
+html[data-native] [data-web-only] { display: none !important; }
+
 /* ---------- Diálogo de confirmação ---------- */
 .btn.danger { background: var(--danger-strong); border-color: var(--danger-strong); color: #fff; }
 .dialog {

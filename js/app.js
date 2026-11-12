@@ -2,6 +2,7 @@
 import { icon } from './icons.js';
 import * as store from './store.js';
 import { createPrompter } from './prompter.js';
+import { isNative, NativeCam } from './native.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -85,7 +86,7 @@ for (const input of document.querySelectorAll('[data-setting]')) {
   });
 }
 
-const prompter = createPrompter({ getSettings, setSetting, toast });
+const prompter = createPrompter({ getSettings, setSetting, toast, ask });
 // Leitura de estado para diagnóstico/testes automatizados (somente leitura).
 globalThis.__teleprompter = { debug: prompter.debug };
 
@@ -204,6 +205,13 @@ window.addEventListener('pagehide', flushSave);
 
 // ---------- Importar / exportar ----------
 function download(name, content, type) {
+  if (isNative) {
+    // A WebView do APK não baixa por <a download>: grava direto em Downloads.
+    NativeCam.saveText({ name, text: content, mime: type })
+      .then(() => toast(`Salvo em Downloads: ${name}`))
+      .catch((e) => toast('Não foi possível salvar: ' + (e?.message || e)));
+    return;
+  }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([content], { type }));
   a.download = name;
@@ -238,7 +246,7 @@ const ACTIONS = {
     const ta = $('edit-text');
     let clip = '';
     try {
-      clip = await navigator.clipboard.readText();
+      clip = isNative ? (await NativeCam.readClipboard()).text : await navigator.clipboard.readText();
     } catch {
       toast('Sem acesso à área de transferência. Toque e segure no texto e escolha Colar.');
       return;
@@ -291,7 +299,8 @@ document.addEventListener('click', (e) => {
 });
 
 // ---------- Service worker (offline + aviso de nova versão) ----------
-if ('serviceWorker' in navigator) {
+// No APK os arquivos vêm dentro do app (atualiza instalando o APK novo): sem service worker.
+if (!isNative && 'serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').then((reg) => {
     reg.addEventListener('updatefound', () => {
       const sw = reg.installing;

@@ -4,11 +4,12 @@ import { icon } from './icons.js';
 import { createCapture, pickMime } from './capture.js';
 import { cropSize, renderVertical } from './reframe.js';
 import { runDiagnostics } from './diag.js';
+import { isNative, NativeCam, createNativeCapture, fileUrl } from './native.js';
 
 const $ = (id) => document.getElementById(id);
 const LINE_HEIGHT = 1.35;
 
-export function createPrompter({ getSettings, setSetting, toast }) {
+export function createPrompter({ getSettings, setSetting, toast, ask }) {
   const view = $('view-prompter');
   const stage = $('stage');
   const inner = $('stage-inner');
@@ -40,11 +41,18 @@ export function createPrompter({ getSettings, setSetting, toast }) {
   let recSel = 'h';
   let renderAbort = null;
   let recInfo = null; // diagnóstico do caminho do recorte da última gravação
+  // APK: gravação nativa em andamento e o arquivo pronto ({ path, width, height, fpsReal, encoder… }).
+  let nativeRec = false;
+  let recNative = null;
+  let recNativeShared = false;
   let wakeLock = null;
   let meterTimer = 0;
   let restarting = false;
 
-  const capture = createCapture({
+  const capture = isNative ? createNativeCapture({
+    video, getSettings, toast, ask,
+    onFinished: (r) => nativeFinished(r), // app foi para segundo plano gravando
+  }) : createCapture({
     video, canvas, getSettings, setSetting, toast,
     onFrameResize: () => positionOverlay(),
     onReframeStatus: (st) => {
@@ -250,6 +258,7 @@ export function createPrompter({ getSettings, setSetting, toast }) {
 
   // ---------- Wake Lock / tela cheia / orientação ----------
   async function lockScreen() {
+    if (isNative) { NativeCam.keepAwake({ on: true }).catch(() => {}); return; }
     try { wakeLock = await navigator.wakeLock?.request('screen'); } catch { /* sem suporte */ }
   }
   document.addEventListener('visibilitychange', () => {
@@ -265,7 +274,7 @@ export function createPrompter({ getSettings, setSetting, toast }) {
   async function startCamera() {
     const ok = await capture.start();
     $('btn-av').hidden = !ok;
-    $('meter').hidden = !ok;
+    $('meter').hidden = !ok || isNative; // no APK o áudio ainda não passa pela página
     clearInterval(meterTimer);
     if (ok) meterTimer = setInterval(renderMeter, 70);
     updateCameraClasses();
@@ -430,9 +439,17 @@ export function createPrompter({ getSettings, setSetting, toast }) {
   }
 
   // ---------- Gravação ----------
-  const isRecording = () => recorder?.state === 'recording';
+  const isRecording = () => nativeRec || recorder?.state === 'recording';
 
   function startRecording() {
+    if (isNative) {
+      nativeRec = true;
+      capture.recStart()
+        .then((r) => { if (!r?.audio) toast('Gravando sem som (microfone sem permissão).'); })
+        .catch((e) => { nativeRec = false; resetRecUi(); toast('Não foi possível gravar: ' + (e?.message || e)); });
+      showRecUi();
+      return;
+    }
     const rec = capture.recording();
     const mimeType = pickMime('video');
     recChunks = [];
@@ -451,6 +468,10 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     // enquanto o codificador inicia, e o vídeo já cobre esse intervalo.
     recVertical?.begin();
     recorder.start();
+    showRecUi();
+  }
+
+  function showRecUi() {
     recStart = Date.now();
     $('rec-badge').hidden = false;
     $('rec-time').textContent = '00:00';
@@ -463,12 +484,41 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     if (!$('av').hidden) renderAv();
   }
 
-  function stopRecording() {
+  function resetRecUi() {
     clearInterval(recTimer);
     $('rec-badge').hidden = true;
     btnRec.classList.remove('on');
     btnRec.innerHTML = icon('video');
+  }
+
+  function stopRecording() {
+    resetRecUi();
+    if (isNative) {
+      if (!nativeRec) return;
+      capture.recStop().then(nativeFinished).catch((e) => { nativeRec = false; toast('A gravação falhou: ' + (e?.message || e)); });
+      return;
+    }
     if (recorder?.state !== 'inactive') recorder?.stop();
+  }
+
+  /** APK: arquivo nativo pronto (parou pelo botão ou porque o app foi para segundo plano). */
+  function nativeFinished(r) {
+    nativeRec = false;
+    resetRecUi();
+    pause();
+    if (!active) { if (r?.path) NativeCam.deleteFile({ path: r.path }).catch(() => {}); return; }
+    if (!r?.ok) { toast('A gravação falhou.'); return; }
+    recNative = r;
+    recNativeShared = false;
+    const preview = $('rec-preview');
+    preview.src = fileUrl(r.path);
+    $('rec-formats').hidden = true;
+    const enc = r.encoder ? ` · ${r.encoder}${r.encoderHardware === false ? ' (software)' : r.encoderHardware ? ' (hardware)' : ''}` : '';
+    $('rec-details').textContent = `${r.width || '?'}×${r.height || '?'} · ${r.fpsReal ?? '?'} fps${enc}`;
+    $('rec-details').hidden = false;
+    $('btn-rec-share').hidden = false;
+    $('rec-result').hidden = false;
+    if (cameraMode && capture.needsRestart()) restartCamera();
   }
 
   async function toggleRecording() {
@@ -566,7 +616,12 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     renderAbort = null;
     const preview = $('rec-preview');
     preview.pause();
-    if (preview.src) URL.revokeObjectURL(preview.src);
+    if (recNative) {
+      // Compartilhado: o outro app pode ainda estar lendo; o arquivo some no próximo início do app.
+      if (!recNativeShared) NativeCam.deleteFile({ path: recNative.path }).catch(() => {});
+      recNative = null;
+      $('rec-details').hidden = true;
+    } else if (preview.src) URL.revokeObjectURL(preview.src);
     preview.removeAttribute('src');
     preview.load(); // descarrega a mídia; sem isso o áudio segue tocando em segundo plano
     recBlobs = {};
@@ -576,7 +631,19 @@ export function createPrompter({ getSettings, setSetting, toast }) {
 
   // Com dois formatos, salvar/compartilhar um não fecha a tela (falta o outro).
   const dualPending = () => !$('rec-formats').hidden;
-  function saveRecording() {
+  async function saveRecording() {
+    if (recNative) {
+      const d = new Date();
+      const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}${String(d.getSeconds()).padStart(2, '0')}`;
+      try {
+        await NativeCam.saveToGallery({ path: recNative.path, name: `teleprompter-${stamp}.mp4` });
+        toast('Vídeo salvo na galeria (Movies/Teleprompter).');
+        closeRecording();
+      } catch (e) {
+        toast('Não foi possível salvar: ' + (e?.message || e));
+      }
+      return;
+    }
     const file = recFile();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(file);
@@ -592,6 +659,11 @@ export function createPrompter({ getSettings, setSetting, toast }) {
   }
 
   async function shareRecording() {
+    if (recNative) {
+      recNativeShared = true;
+      NativeCam.shareFile({ path: recNative.path }).catch((e) => toast('Não foi possível compartilhar: ' + (e?.message || e)));
+      return;
+    }
     try {
       await navigator.share({ files: [recFile()], title: 'Teleprompter' });
       if (!dualPending()) closeRecording();
@@ -623,7 +695,11 @@ export function createPrompter({ getSettings, setSetting, toast }) {
 
   function close() {
     if (!active) return;
-    if (isRecording()) {
+    if (nativeRec) {
+      // Saiu gravando: descarta (nativeFinished apaga o arquivo porque active = false).
+      resetRecUi();
+      capture.recStop().then(nativeFinished).catch(() => {});
+    } else if (isRecording()) {
       recorder.onstop = null;
       stopRecording();
       recVertical?.end();
@@ -637,6 +713,7 @@ export function createPrompter({ getSettings, setSetting, toast }) {
     closeRecording();
     wakeLock?.release().catch(() => {});
     wakeLock = null;
+    if (isNative) NativeCam.keepAwake({ on: false }).catch(() => {});
     active = false;
     cameraMode = false;
   }

@@ -1,6 +1,6 @@
 // Service worker: cache-first de todos os arquivos do app (funciona offline).
 // AO PUBLICAR NOVA VERSÃO: incremente VERSION — é o que dispara a atualização nos celulares.
-const VERSION = 'v12';
+const VERSION = 'v13';
 const CACHE = `teleprompter-${VERSION}`;
 // Detector de rosto (~12 MB): fora da instalação; guardado no 1º uso do Vertical inteligente.
 // Cache próprio, sem versão do app, para não baixar de novo a cada atualização.
@@ -15,6 +15,7 @@ const ASSETS = [
   'js/audio.js',
   'js/capture.js',
   'js/icons.js',
+  'js/native.js',
   'js/diag.js',
   'js/face-worker.js',
   'js/prompter.js',

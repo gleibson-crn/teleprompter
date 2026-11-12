@@ -1,0 +1,12 @@
+{
+  "appId": "io.github.gleibsoncrn.teleprompter",
+  "appName": "Teleprompter",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#0b0d12"
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

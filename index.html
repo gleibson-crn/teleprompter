@@ -119,10 +119,10 @@
 
       <h3 class="sheet-sub"><span data-icon="video"></span>Vídeo</h3>
       <div class="toggles">
-        <label class="toggle"><input type="checkbox" data-setting="vertical" data-restart><span data-icon="rectangle-vertical"></span>Vertical inteligente (9:16)</label>
-        <p class="hint">Deite o celular na horizontal (em pé o vídeo já sai vertical, um arquivo só). O preview mostra o recorte vertical acompanhando você; ao parar, você recebe <strong>dois vídeos</strong>: o horizontal e o vertical (gerado logo após a gravação, leva mais ou menos a duração do vídeo — mantenha o app aberto). Na 1ª vez baixa o detector de rosto (~12 MB).</p>
-        <label class="toggle"><input type="checkbox" data-setting="follow" data-restart><span data-icon="scan-face"></span>Seguir o rosto</label>
-        <p id="perf-info" class="hint" hidden></p>
+        <label class="toggle" data-web-only><input type="checkbox" data-setting="vertical" data-restart><span data-icon="rectangle-vertical"></span>Vertical inteligente (9:16)</label>
+        <p class="hint" data-web-only>Deite o celular na horizontal (em pé o vídeo já sai vertical, um arquivo só). O preview mostra o recorte vertical acompanhando você; ao parar, você recebe <strong>dois vídeos</strong>: o horizontal e o vertical (gerado logo após a gravação, leva mais ou menos a duração do vídeo — mantenha o app aberto). Na 1ª vez baixa o detector de rosto (~12 MB).</p>
+        <label class="toggle" data-web-only><input type="checkbox" data-setting="follow" data-restart><span data-icon="scan-face"></span>Seguir o rosto</label>
+        <p id="perf-info" class="hint" data-web-only hidden></p>
         <label class="toggle"><input type="checkbox" data-setting="grid"><span data-icon="grid-3x3"></span>Grade (regra dos terços)</label>
         <label class="toggle"><input type="checkbox" data-setting="guide916"><span data-icon="rectangle-vertical"></span>Guia vertical 9:16 (no modo normal)</label>
       </div>
@@ -143,9 +143,10 @@
             <option value="60">60 fps</option>
           </select></label>
       </div>
-      <p class="hint">No Vertical inteligente a câmera usa 1080p para o recorte ficar nítido.</p>
+      <p class="hint" data-web-only>No Vertical inteligente a câmera usa 1080p para o recorte ficar nítido.</p>
       <div id="cam-controls"></div>
 
+      <div data-web-only>
       <h3 class="sheet-sub"><span data-icon="mic"></span>Áudio</h3>
       <label class="field">Microfone
         <select id="mic-select" data-setting="micId" data-restart></select></label>
@@ -170,13 +171,16 @@
         <audio id="mic-test-audio" hidden></audio>
       </div>
       <p class="hint">Microfone Bluetooth costuma gravar com qualidade de ligação (abafado). Para voz, prefira o do celular, com fio ou USB.</p>
+      </div>
 
+      <div data-web-only>
       <h3 class="sheet-sub"><span data-icon="gauge"></span>Diagnóstico</h3>
       <p class="hint">Grava 8 s com os ajustes atuais (nada é salvo) e mede onde o celular engasga: codificador de vídeo, câmera, quadros perdidos e travadas da tela.</p>
       <button id="btn-diag" class="btn secondary" data-action="diag"><span class="btn-ico" data-icon="gauge"></span>Diagnóstico de gravação (8 s)</button>
       <div id="diag-result" class="diag" hidden>
         <pre id="diag-out" class="diag-out"></pre>
         <button class="btn primary" data-action="diag-copy"><span class="btn-ico" data-icon="copy"></span>Copiar</button>
+      </div>
       </div>
     </div>
 
@@ -188,6 +192,7 @@
         <button id="rec-tab-v" class="seg" role="tab" data-action="rec-show-v"><span data-icon="rectangle-vertical"></span><span id="rec-v-label">Vertical</span></button>
       </div>
       <video id="rec-preview" class="rec-preview" controls playsinline></video>
+      <p id="rec-details" class="hint" hidden></p>
       <div class="actions wide">
         <button class="btn secondary" data-action="rec-discard"><span class="btn-ico" data-icon="trash-2"></span>Descartar</button>
         <button id="btn-rec-share" class="btn secondary" data-action="rec-share" hidden><span class="btn-ico" data-icon="share-2"></span>Compartilhar</button>

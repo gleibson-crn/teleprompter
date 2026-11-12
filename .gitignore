@@ -1,3 +1,13 @@
 node_modules/
 .DS_Store
 Thumbs.db
+
+# APK (Capacitor)
+www/
+android/**/build/
+android/.gradle/
+android/local.properties
+android/app/release/
+*.jks
+*.keystore
+*.p12
