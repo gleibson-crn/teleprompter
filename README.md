@@ -59,15 +59,15 @@ Teleprompter para celular em forma de **PWA**: você instala pelo navegador, sem
 Em aparelhos onde o Chrome não usa o codificador de vídeo do chip, use o **APK**. Exemplo: no moto g41, o PWA gravava ~4 fps em 1080p.
 
 A interface é a mesma, mas a câmera, o preview e a gravação são **nativos** (CameraX):
-- 1080p/720p a 30 fps (60 se o aparelho suportar);
+- 1080p/720p a 30 fps (60 se o aparelho suportar); o seletor trava o que a câmera escolhida não grava;
 - áudio do microfone;
 - zoom;
 - arquivo sem espelhar.
+- **Vertical inteligente** nativo: com o celular deitado, o detector de rosto do Android (ML Kit, roda no aparelho) move uma janela 9:16 no preview acompanhando você. Ao parar, o app gera o vertical a partir do horizontal com o codificador de hardware (Media3). Você recebe os dois: 1920×1080 + 608×1080 (ou 1280×720 + 400×720 na câmera de 720p). Em pé, sai um vídeo só.
 
 Ao terminar, a tela mostra a resolução, o fps real e o codificador usado.
 
 Ainda não existem no APK (ficam escondidos):
-- Vertical inteligente;
 - tratamento de áudio (escolha de microfone, modo Voz, ganho);
 - diagnóstico.
 

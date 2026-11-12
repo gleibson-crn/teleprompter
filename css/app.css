@@ -219,6 +219,7 @@ html.native-cam body, html.native-cam .prompter { background: transparent; }
 html.native-cam .cam-video { visibility: hidden; }
 /* Recursos que ainda só existem na versão web */
 html[data-native] [data-web-only] { display: none !important; }
+html:not([data-native]) [data-native-only] { display: none !important; }
 
 /* ---------- Diálogo de confirmação ---------- */
 .btn.danger { background: var(--danger-strong); border-color: var(--danger-strong); color: #fff; }
@@ -279,6 +280,8 @@ html[data-native] [data-web-only] { display: none !important; }
     linear-gradient(to bottom, transparent calc(33.33% - .5px), rgb(255 255 255 / .45) calc(33.33% - .5px) calc(33.33% + .5px), transparent calc(33.33% + .5px) calc(66.66% - .5px), rgb(255 255 255 / .45) calc(66.66% - .5px) calc(66.66% + .5px), transparent calc(66.66% + .5px));
 }
 .guide916 { position: absolute; border: 2px dashed rgb(245 179 1 / .85); border-radius: 4px; }
+/* APK, Vertical inteligente: janela do recorte que segue o rosto; o resto escurece. */
+.guide916.mask { border-style: solid; box-shadow: 0 0 0 200vmax rgb(0 0 0 / .5); transition: left .12s linear; }
 
 .reframe-status {
   position: absolute; left: 50%; top: calc(12px + var(--safe-top)); transform: translateX(-50%);

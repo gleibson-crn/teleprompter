@@ -153,12 +153,14 @@ public class TeleprompterCameraPlugin extends Plugin {
         final int quality = call.getInt("quality", 1080);
         final int fps = call.getInt("fps", 30);
         final boolean vertical = Boolean.TRUE.equals(call.getBoolean("vertical", false));
+        final boolean follow = !Boolean.FALSE.equals(call.getBoolean("follow", true));
         final Context ctx = getContext();
         final ListenableFuture<ProcessCameraProvider> future = ProcessCameraProvider.getInstance(ctx);
         future.addListener(() -> {
             try {
                 provider = future.get();
                 setupReframer(vertical);
+                if (reframer != null) reframer.setFollow(follow);
                 bind(facing, quality, fps);
                 showPreview(true);
                 JSObject info = cameraInfo();

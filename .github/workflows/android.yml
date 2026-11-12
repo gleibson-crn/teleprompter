@@ -97,7 +97,7 @@ jobs:
             exit 1
           fi
           "$BT/aapt2" dump permissions "$APK" | tee perms.txt
-          if grep -E 'permission: ' perms.txt | grep -vE 'android.permission.(INTERNET|ACCESS_NETWORK_STATE|CAMERA|RECORD_AUDIO|REQUEST_INSTALL_PACKAGES)|DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'; then
+          if grep -E 'permission: ' perms.txt | grep -vE 'android.permission.(INTERNET|ACCESS_NETWORK_STATE|CAMERA|RECORD_AUDIO|REQUEST_INSTALL_PACKAGES|WAKE_LOCK)|DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'; then
             echo "::error::Permissão inesperada no APK."
             exit 1
           fi

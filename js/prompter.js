@@ -43,6 +43,7 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
   let recInfo = null; // diagnóstico do caminho do recorte da última gravação
   // APK: gravação nativa em andamento e o arquivo pronto ({ path, width, height, fpsReal, encoder… }).
   let nativeRec = false;
+  // { h: arquivo horizontal, v: vertical (quando gerado) } — cada um { path, width, height, fpsReal, encoder… }
   let recNative = null;
   let recNativeShared = false;
   let wakeLock = null;
@@ -52,6 +53,7 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
   const capture = isNative ? createNativeCapture({
     video, getSettings, setSetting, toast, ask,
     onFinished: (r) => nativeFinished(r), // app foi para segundo plano gravando
+    onReframe: () => positionOverlay(), // janela 9:16 acompanha o rosto no preview
   }) : createCapture({
     video, canvas, getSettings, setSetting, toast,
     onFrameResize: () => positionOverlay(),
@@ -92,7 +94,10 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
     view.classList.toggle('vertical', cameraMode && capture.isVertical());
     view.classList.toggle('rear', s.facing === 'environment');
     $('grid').hidden = !s.grid;
-    $('guide916').hidden = !(s.guide916 && !capture.isVertical());
+    // APK no Vertical inteligente: a guia 9:16 vira a janela do recorte (escurece o resto).
+    const mask = capture.maskCenter?.() ?? null;
+    $('guide916').classList.toggle('mask', mask !== null);
+    $('guide916').hidden = !(mask !== null || (s.guide916 && !capture.isVertical()));
     $('frame-overlay').hidden = !cameraMode || !capture.active() || (!s.grid && $('guide916').hidden);
     positionOverlay();
   }
@@ -119,7 +124,13 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
     const g = $('guide916').style;
     g.width = crop.w * scale + 'px';
     g.height = crop.h * scale + 'px';
-    g.left = (r.left + r.width / 2 - left) - (crop.w * scale) / 2 + 'px';
+    const gw = crop.w * scale;
+    const mask = capture.maskCenter?.() ?? null;
+    if (mask === null) g.left = (r.left + r.width / 2 - left) - gw / 2 + 'px';
+    else {
+      const frameLeft = (r.left + r.width / 2 - left) - cw / 2;
+      g.left = Math.max(frameLeft, Math.min(frameLeft + cw - gw, frameLeft + mask * cw - gw / 2)) + 'px';
+    }
     g.top = (r.top + r.height / 2 - top) - (crop.h * scale) / 2 + 'px';
   }
 
@@ -508,17 +519,44 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
     pause();
     if (!active) { if (r?.path) NativeCam.deleteFile({ path: r.path }).catch(() => {}); return; }
     if (!r?.ok) { toast('A gravação falhou.'); return; }
-    recNative = r;
+    recNative = { h: r };
     recNativeShared = false;
-    const preview = $('rec-preview');
-    preview.src = fileUrl(r.path);
-    $('rec-formats').hidden = true;
-    const enc = r.encoder ? ` · ${r.encoder}${r.encoderHardware === false ? ' (software)' : r.encoderHardware ? ' (hardware)' : ''}` : '';
-    $('rec-details').textContent = `${r.width || '?'}×${r.height || '?'} · ${r.fpsReal ?? '?'} fps${enc}`;
+    recInfo = { points: r.pathPoints ?? 0, vertical: !!r.vertical };
+    $('rec-formats').hidden = !r.vertical;
+    showFormat('h');
     $('rec-details').hidden = false;
     $('btn-rec-share').hidden = false;
     $('rec-result').hidden = false;
-    if (cameraMode && capture.needsRestart()) restartCamera();
+    if (r.vertical) makeVerticalNative(r.path);
+    else if (cameraMode && capture.needsRestart()) restartCamera();
+  }
+
+  /** APK: o vertical é gerado pelo app (Media3, codificador de hardware). */
+  async function makeVerticalNative(path) {
+    const tab = $('rec-tab-v');
+    const label = $('rec-v-label');
+    tab.disabled = true;
+    label.textContent = 'Gerando 0%';
+    const mine = recNative;
+    renderAbort = { abort: () => capture.cancelVertical() };
+    try {
+      const v = await capture.makeVertical(path, (f) => { if (recNative === mine) label.textContent = `Gerando ${Math.floor(f * 100)}%`; });
+      if (recNative !== mine) { NativeCam.deleteFile({ path: v.path }).catch(() => {}); return; }
+      mine.v = v;
+      label.textContent = 'Vertical';
+      tab.disabled = false;
+      toast('Vídeo vertical pronto.');
+    } catch {
+      if (recNative === mine) { label.textContent = 'Vertical (falhou)'; toast('Não foi possível gerar o vertical.'); }
+    } finally {
+      if (recNative === mine) renderAbort = null;
+      if (cameraMode && capture.needsRestart()) restartCamera();
+    }
+  }
+
+  function nativeDetails(r) {
+    const enc = r.encoder ? ` · ${r.encoder}${r.encoderHardware === false ? ' (software)' : r.encoderHardware ? ' (hardware)' : ''}` : '';
+    return `${r.width || '?'}×${r.height || '?'} · ${r.fpsReal ?? '?'} fps${enc}`;
   }
 
   async function toggleRecording() {
@@ -592,6 +630,17 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
   }
 
   function showFormat(f) {
+    if (recNative) {
+      if (!recNative[f]) return;
+      recSel = f;
+      const preview = $('rec-preview');
+      preview.pause();
+      preview.src = fileUrl(recNative[f].path);
+      $('rec-details').textContent = nativeDetails(recNative[f]);
+      $('rec-tab-h').classList.toggle('on', f === 'h');
+      $('rec-tab-v').classList.toggle('on', f === 'v');
+      return;
+    }
     if (!recBlobs[f]) return;
     recSel = f;
     const preview = $('rec-preview');
@@ -618,7 +667,9 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
     preview.pause();
     if (recNative) {
       // Compartilhado: o outro app pode ainda estar lendo; o arquivo some no próximo início do app.
-      if (!recNativeShared) NativeCam.deleteFile({ path: recNative.path }).catch(() => {});
+      if (!recNativeShared) {
+        for (const r of [recNative.h, recNative.v]) if (r) NativeCam.deleteFile({ path: r.path }).catch(() => {});
+      }
       recNative = null;
       $('rec-details').hidden = true;
     } else if (preview.src) URL.revokeObjectURL(preview.src);
@@ -636,9 +687,10 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
       const d = new Date();
       const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}${String(d.getSeconds()).padStart(2, '0')}`;
       try {
-        await NativeCam.saveToGallery({ path: recNative.path, name: `teleprompter-${stamp}.mp4` });
-        toast('Vídeo salvo na galeria (Movies/Teleprompter).');
-        closeRecording();
+        const suffix = dualPending() ? (recSel === 'v' ? '-vertical' : '-horizontal') : '';
+        await NativeCam.saveToGallery({ path: recNative[recSel].path, name: `teleprompter-${stamp}${suffix}.mp4` });
+        if (dualPending()) toast(`${recSel === 'v' ? 'Vertical' : 'Horizontal'} salvo na galeria (Movies/Teleprompter).`);
+        else { toast('Vídeo salvo na galeria (Movies/Teleprompter).'); closeRecording(); }
       } catch (e) {
         toast('Não foi possível salvar: ' + (e?.message || e));
       }
@@ -661,7 +713,7 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
   async function shareRecording() {
     if (recNative) {
       recNativeShared = true;
-      NativeCam.shareFile({ path: recNative.path }).catch((e) => toast('Não foi possível compartilhar: ' + (e?.message || e)));
+      NativeCam.shareFile({ path: recNative[recSel].path }).catch((e) => toast('Não foi possível compartilhar: ' + (e?.message || e)));
       return;
     }
     try {

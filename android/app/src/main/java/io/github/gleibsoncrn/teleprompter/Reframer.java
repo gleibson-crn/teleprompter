@@ -66,6 +66,10 @@ final class Reframer implements ImageAnalysis.Analyzer {
 
     void setEnabled(boolean on) { enabled = on; }
 
+    /** Seguir o rosto desligado: o recorte fica no centro (sem detecção). */
+    void setFollow(boolean on) { follow = on; }
+    private volatile boolean follow = true;
+
     /** Começa a guardar o caminho (t = 0 agora, quando a gravação começou de fato). */
     void beginPath() {
         synchronized (lock) {
@@ -99,6 +103,7 @@ final class Reframer implements ImageAnalysis.Analyzer {
             int h = swap ? bmp.getWidth() : bmp.getHeight();
             if (h >= w) { setCenterNoFace(now); return; } // quadro em pé: o vertical é ele inteiro
             half = (h * 9.0 / 16.0) / w / 2.0;
+            if (!follow) { setCenterNoFace(now); listener.onCenter(center, 0); return; }
             List<Face> faces = Tasks.await(detector.process(InputImage.fromBitmap(bmp, rot)));
             if (!faces.isEmpty()) {
                 // Maior rosto = quem está lendo.
