@@ -13,7 +13,7 @@ export const DEFAULT_SETTINGS = {
   guide: true,
   center: false,
   // Câmera
-  facing: 'user',  // 'user' (frontal) | 'environment' (traseira)
+  facing: 'user',  // sempre frontal (quem lê precisa ver a tela)
   res: 720,        // 720 | 1080 — 720p é o mais fluido
   fps: 30,         // 30 | 60
   vertical: false, // Vertical inteligente: recorte 9:16 a partir da câmera deitada
@@ -119,7 +119,8 @@ export function loadSettings() {
     saved.res ??= saved.hd ? 1080 : 720;
     delete saved.hd;
   }
-  return { ...DEFAULT_SETTINGS, ...saved };
+  // Só câmera frontal: com a traseira a pessoa não vê o texto (a opção saiu na v18).
+  return { ...DEFAULT_SETTINGS, ...saved, facing: 'user' };
 }
 
 export function saveSettings(settings) {

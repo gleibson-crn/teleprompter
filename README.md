@@ -31,7 +31,7 @@ Teleprompter para celular em forma de **PWA**: você instala pelo navegador, sem
   - o painel Câmera e áudio mostra o desempenho ao vivo (fps do preview, detector e tempo de detecção);
   - o detector de rosto (MediaPipe, ~12 MB) é baixado na 1ª vez que você liga o modo e depois funciona offline.
 - **Câmera e áudio** (botão de controles na tela da câmera):
-  - câmera frontal ou traseira, resolução 720p/1080p e 30/60 fps;
+  - sempre a câmera **frontal** (com a traseira você não veria o texto), resolução 720p/1080p e 30/60 fps;
   - zoom, exposição, foco manual e lanterna, que só aparecem se o aparelho suportar;
   - grade de terços e guia vertical 9:16;
   - escolha do microfone (interno, com fio, USB);
