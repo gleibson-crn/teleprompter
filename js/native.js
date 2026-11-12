@@ -52,7 +52,9 @@ export function createNativeCapture({ video, getSettings, toast, ask, onFinished
       return false;
     }
     zoom = info.zoom || 1;
-    if (s.fps > 30 && info.fps < s.fps) toast(`Esta câmera não grava a ${s.fps} fps aqui — usando ${info.fps}.`);
+    if (info.maxHeight && s.res > info.maxHeight) {
+      toast(`A câmera ${s.facing === 'environment' ? 'traseira' : 'frontal'} deste celular grava no máximo ${info.maxHeight}p.`);
+    } else if (s.fps > 30 && info.fps < s.fps) toast(`Esta câmera não grava a ${s.fps} fps aqui — usando ${info.fps}.`);
     // O <video> não toca nada: só ocupa a área do preview (grade/guia se posicionam por ele).
     video.hidden = false;
     document.documentElement.classList.add('native-cam');

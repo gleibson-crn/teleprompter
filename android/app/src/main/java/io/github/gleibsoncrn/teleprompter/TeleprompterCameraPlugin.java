@@ -29,6 +29,7 @@ import android.webkit.WebView;
 
 import androidx.camera.core.Camera;
 import androidx.camera.core.CameraSelector;
+import androidx.camera.core.DynamicRange;
 import androidx.camera.core.Preview;
 import androidx.camera.core.ZoomState;
 import androidx.camera.lifecycle.ProcessCameraProvider;
@@ -197,6 +198,15 @@ public class TeleprompterCameraPlugin extends Plugin {
         r.put("zoom", z != null ? z.getZoomRatio() : 1f);
         r.put("fps", activeFps);
         r.put("fps60", supportsFps(60));
+        // Maior resolução de GRAVAÇÃO desta câmera (a frontal de muitos aparelhos para em 720p).
+        int maxH = 0;
+        try {
+            for (Quality q : Recorder.getVideoCapabilities(camera.getCameraInfo()).getSupportedQualities(DynamicRange.SDR)) {
+                int h = q == Quality.UHD ? 2160 : q == Quality.FHD ? 1080 : q == Quality.HD ? 720 : q == Quality.SD ? 480 : 0;
+                if (h > maxH) maxH = h;
+            }
+        } catch (Exception ignored) { }
+        r.put("maxHeight", maxH);
         return r;
     }
 
