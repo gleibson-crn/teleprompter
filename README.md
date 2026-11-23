@@ -65,10 +65,22 @@ A interface é a mesma, mas a câmera, o preview e a gravação são **nativos**
 - arquivo sem espelhar.
 - **Vertical inteligente** nativo: com o celular deitado, o detector de rosto do Android (ML Kit, roda no aparelho) move uma janela 9:16 no preview acompanhando você. Ao parar, o app gera o vertical a partir do horizontal com o codificador de hardware (Media3). Você recebe os dois: 1920×1080 + 608×1080 (ou 1280×720 + 400×720 na câmera de 720p). Em pé, sai um vídeo só.
 
-Ao terminar, a tela mostra a resolução, o fps real e o codificador usado.
+- **Tratamento de voz** (painel Câmera e áudio → Áudio): **Leve** (padrão), **Forte** ou **Desligado**.
+  - Aplicado depois de gravar, numa cópia: o vídeo é copiado sem recodificar e só o áudio é refeito. Se houver vertical, ele sai do original com o mesmo tratamento.
+  - A cadeia é:
+    - passa-altas em 80 Hz, que tira ronco e vento;
+    - redução de ruído espectral (Wiener). Para não robotizar, nenhuma frequência cai mais que 12 dB no Leve ou 18 dB no Forte;
+    - compressor e limitador em −1 dBFS.
+  - O tamanho é exatamente o do original, então a voz não fica fora de sincronia com o vídeo.
+  - Na tela do vídeo você alterna **Voz tratada × Original** no mesmo ponto e salva o que preferir.
+  - O painel mostra qual microfone vai gravar: USB, com fio ou o do celular, com nome e taxa. O Android passa sozinho para o microfone USB conectado; o app não escolhe o microfone.
+  - Testes sem aparelho: [VoiceDspTest.java](android/app/src/test/java/io/github/gleibsoncrn/teleprompter/VoiceDspTest.java). Rodam no CI, que publica amostras WAV (original, leve e forte) no artefato .
+
+Ao terminar, a tela mostra a resolução, o fps real, o codificador, o microfone e se a voz está tratada.
 
 Ainda não existem no APK (ficam escondidos):
-- tratamento de áudio (escolha de microfone, modo Voz, ganho);
+- escolher outro microfone pelo app, ganho manual e silenciar o fundo nas pausas;
+- teste de microfone de 5 s;
 - diagnóstico.
 
 Para esses recursos, use o PWA por enquanto.
