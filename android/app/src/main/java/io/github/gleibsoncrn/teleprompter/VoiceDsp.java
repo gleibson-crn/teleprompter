@@ -113,6 +113,7 @@ final class VoiceDsp {
         final double[] im;
         final double[] smooth;
         final double[] noise;
+        final double[] minS;
         final double[] gPrev;
         final double[] gammaPrev;
         final double[] gain;
@@ -148,13 +149,14 @@ final class VoiceDsp {
             im = new double[n];
             smooth = new double[bins];
             noise = new double[bins];
+            minS = new double[bins];
             gPrev = new double[bins];
             gammaPrev = new double[bins];
             gain = new double[bins];
             java.util.Arrays.fill(gPrev, 1);
             java.util.Arrays.fill(gammaPrev, 1);
             floor = Math.pow(10, (level == FORTE ? -18 : -12) / 20.0);
-            over = level == FORTE ? 3.0 : 2.0;
+            over = level == FORTE ? 1.6 : 1.0;
             // o ruído estimado sobe no máximo ~3 dB/s (o mínimo segue o fundo, não a voz)
             rise = Math.pow(10, 3.0 / 10.0 * hop / sr);
 
@@ -188,11 +190,17 @@ final class VoiceDsp {
             fft(re, im, false);
             for (int k = 0; k < bins; k++) {
                 double p = re[k] * re[k] + im[k] * im[k];
+                // Ruído = MÉDIA do espectro nos trechos sem voz (onde a potência fica perto do
+                // ruído atual), com um piso vindo do mínimo do espectro suavizado — que só
+                // sobe devagar e destrava a estimativa se o fundo aumentar (ar-condicionado ligou).
                 boolean init = frames < 4;
-                smooth[k] = frames == 0 ? p : 0.7 * smooth[k] + 0.3 * p;
-                if (init) noise[k] = smooth[k];
-                else if (smooth[k] < noise[k]) noise[k] = smooth[k];
-                else noise[k] = Math.min(noise[k] * rise, smooth[k]);
+                smooth[k] = frames == 0 ? p : 0.9 * smooth[k] + 0.1 * p;
+                if (init) { noise[k] = smooth[k]; minS[k] = smooth[k]; }
+                else {
+                    minS[k] = smooth[k] < minS[k] ? smooth[k] : Math.min(minS[k] * rise, smooth[k]);
+                    if (p < 3 * noise[k]) noise[k] = 0.95 * noise[k] + 0.05 * p;
+                    noise[k] = Math.max(noise[k], 1.5 * minS[k]);
+                }
                 double nz = Math.max(noise[k] * over, 1e-12);
                 double gamma = p / nz;
                 double xi = 0.98 * gPrev[k] * gPrev[k] * gammaPrev[k] + 0.02 * Math.max(gamma - 1, 0);

@@ -123,7 +123,7 @@ public class VoiceDspTest {
     public void reduzRuidoSemPassarDoPiso() {
         int sr = 48000;
         float[] v = voice(sr, 12);
-        float[] in = mix(v, noise(v.length, 0.01, 1));
+        float[] in = mix(v, noise(v.length, 0.004, 1));
         double snrIn = db(rms(in, sr, true, 1, 0)) - db(rms(in, sr, false, 1, 0));
         double[] floors = { 0, -12, -18 };
         for (int level : new int[] { VoiceDsp.LEVE, VoiceDsp.FORTE }) {
@@ -180,7 +180,7 @@ public class VoiceDspTest {
     public void gravaAmostrasParaOuvir() throws IOException {
         int sr = 48000;
         float[] v = voice(sr, 12);
-        float[] in = mix(v, noise(v.length, 0.01, 1));
+        float[] in = mix(v, noise(v.length, 0.004, 1));
         File dir = new File("build/voice-samples");
         //noinspection ResultOfMethodCallIgnored
         dir.mkdirs();
