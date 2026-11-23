@@ -74,7 +74,7 @@ A interface é a mesma, mas a câmera, o preview e a gravação são **nativos**
   - O tamanho é exatamente o do original, então a voz não fica fora de sincronia com o vídeo.
   - Na tela do vídeo você alterna **Voz tratada × Original** no mesmo ponto e salva o que preferir.
   - O painel mostra qual microfone vai gravar: USB, com fio ou o do celular, com nome e taxa. O Android passa sozinho para o microfone USB conectado; o app não escolhe o microfone.
-  - Testes sem aparelho: [VoiceDspTest.java](android/app/src/test/java/io/github/gleibsoncrn/teleprompter/VoiceDspTest.java). Rodam no CI, que publica amostras WAV (original, leve e forte) no artefato .
+  - Testes sem aparelho: [VoiceDspTest.java](android/app/src/test/java/io/github/gleibsoncrn/teleprompter/VoiceDspTest.java). Rodam no CI, que publica amostras WAV (original, leve e forte) no artefato `amostras-voz`.
 
 Ao terminar, a tela mostra a resolução, o fps real, o codificador, o microfone e se a voz está tratada.
 
