@@ -134,8 +134,14 @@ public class VoiceDspTest {
             System.arraycopy(out, 0, all, 0, out.length);
             System.arraycopy(tail, 0, all, out.length, tail.length);
             double snrOut = db(rms(all, sr, true, 1, 0)) - db(rms(all, sr, false, 1, 0));
-            System.out.printf("nível %d: SNR %.1f dB → %.1f dB; ganho mínimo %.1f dB%n", level, snrIn, snrOut, db(dsp.minGain()));
-            assertTrue("melhora o SNR em ≥ 6 dB (nível " + level + "): " + snrIn + " → " + snrOut, snrOut - snrIn >= 6);
+            // O compressor soma +6 dB a tudo: desconta para medir só o redutor.
+            double pauseDrop = db(rms(in, sr, false, 1, 0)) - db(rms(all, sr, false, 1, 0)) + 6;
+            double speechLoss = db(rms(v, sr, true, 1, 0)) - (db(rms(all, sr, true, 1, 0)) - 6);
+            System.out.printf("nível %d: SNR %.1f → %.1f dB; ruído nas pausas −%.1f dB; voz perde %.1f dB; ganho mínimo %.1f dB%n",
+                level, snrIn, snrOut, pauseDrop, speechLoss, db(dsp.minGain()));
+            assertTrue("ruído nas pausas cai o bastante (nível " + level + "): " + pauseDrop, pauseDrop >= (level == VoiceDsp.FORTE ? 12 : 8));
+            assertTrue("voz preservada (nível " + level + "): perde " + speechLoss, speechLoss <= 4);
+            assertTrue("SNR melhora (nível " + level + ")", snrOut > snrIn + 3);
             assertTrue("nunca abaixo do piso", db(dsp.minGain()) >= floors[level] - 0.01);
         }
     }
