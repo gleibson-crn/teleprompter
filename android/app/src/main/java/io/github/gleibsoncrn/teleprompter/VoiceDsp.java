@@ -20,6 +20,7 @@ final class VoiceDsp {
     static final int OFF = 0;
     static final int LEVE = 1;
     static final int FORTE = 2;
+    static final double ALPHA = 0.98;
 
     static int parseLevel(String s) {
         if ("forte".equals(s)) return FORTE;
@@ -37,6 +38,11 @@ final class VoiceDsp {
     private long dropLeft;      // amostras iniciais a descartar (latência)
 
     VoiceDsp(int sampleRate, int channels, int level) {
+        this(sampleRate, channels, level, ALPHA, true, -1);
+    }
+
+    /** Para o teste: alfa do decision-directed, compressor liga/desliga, superestimação (−1 = padrão). */
+    VoiceDsp(int sampleRate, int channels, int level, double alpha, boolean dynamics, double overEst) {
         if (level == OFF) throw new IllegalArgumentException("nível desligado não processa");
         this.channels = channels;
         n = sampleRate >= 32000 ? 1024 : 512;
@@ -44,7 +50,7 @@ final class VoiceDsp {
         latency = n - hop;
         dropLeft = latency;
         chans = new Chan[channels];
-        for (int c = 0; c < channels; c++) chans[c] = new Chan(sampleRate, n, level);
+        for (int c = 0; c < channels; c++) chans[c] = new Chan(sampleRate, n, level, alpha, dynamics, overEst);
     }
 
     /** Ganho mínimo aplicado até agora (para teste: nunca abaixo do piso). */
@@ -137,7 +143,12 @@ final class VoiceDsp {
         static final double MAKEUP_DB = 6;
         static final double CEIL = 0.89; // −1 dBFS
 
-        Chan(int sr, int n, int level) {
+        final double alpha;
+        final boolean dynamics;
+
+        Chan(int sr, int n, int level, double alpha, boolean dynamics, double overEst) {
+            this.alpha = alpha;
+            this.dynamics = dynamics;
             this.n = n;
             hop = n / 4;
             bins = n / 2 + 1;
@@ -156,7 +167,7 @@ final class VoiceDsp {
             java.util.Arrays.fill(gPrev, 1);
             java.util.Arrays.fill(gammaPrev, 1);
             floor = Math.pow(10, (level == FORTE ? -18 : -12) / 20.0);
-            over = level == FORTE ? 1.6 : 1.0;
+            over = overEst > 0 ? overEst : level == FORTE ? 1.6 : 1.0;
             // o ruído estimado sobe no máximo ~3 dB/s (o mínimo segue o fundo, não a voz)
             rise = Math.pow(10, 3.0 / 10.0 * hop / sr);
 
@@ -203,7 +214,7 @@ final class VoiceDsp {
                 }
                 double nz = Math.max(noise[k] * over, 1e-12);
                 double gamma = p / nz;
-                double xi = 0.98 * gPrev[k] * gPrev[k] * gammaPrev[k] + 0.02 * Math.max(gamma - 1, 0);
+                double xi = alpha * gPrev[k] * gPrev[k] * gammaPrev[k] + (1 - alpha) * Math.max(gamma - 1, 0);
                 xi = Math.max(xi, 1e-3);
                 double g = xi / (1 + xi);
                 gain[k] = g;
@@ -224,7 +235,7 @@ final class VoiceDsp {
             fft(re, im, true);
             // Hann na análise e na síntese com 75% de sobreposição: soma das janelas² = 1,5.
             for (int i = 0; i < n; i++) ola[i] += (float) (re[i] * win[i] / 1.5);
-            for (int i = 0; i < hop; i++) outTmp.add(dyn(ola[i]));
+            for (int i = 0; i < hop; i++) outTmp.add(dynamics ? dyn(ola[i]) : ola[i]);
             System.arraycopy(ola, hop, ola, 0, n - hop);
             java.util.Arrays.fill(ola, n - hop, n, 0f);
             System.arraycopy(inBuf, hop, inBuf, 0, n - hop);

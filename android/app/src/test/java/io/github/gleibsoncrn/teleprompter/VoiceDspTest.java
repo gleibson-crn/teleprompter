@@ -146,6 +146,26 @@ public class VoiceDspTest {
         }
     }
 
+    /** Só imprime (ajuste): redutor sem compressor, variando alfa e superestimação do ruído. */
+    @Test
+    public void varreduraDeAjuste() {
+        int sr = 48000;
+        float[] v = voice(sr, 12);
+        float[] in = mix(v, noise(v.length, 0.004, 1));
+        System.out.printf("voz %.1f dBFS, ruído %.1f dBFS%n", db(rms(v, sr, true, 1, 0)), db(rms(in, sr, false, 1, 0)));
+        for (int level : new int[] { VoiceDsp.LEVE, VoiceDsp.FORTE }) {
+            for (double alpha : new double[] { 0.90, 0.95, 0.98 }) {
+                for (double over : new double[] { 0.7, 1.0, 1.6 }) {
+                    VoiceDsp dsp = new VoiceDsp(sr, 1, level, alpha, false, over);
+                    float[] out = dsp.process(in, in.length);
+                    double pauseDrop = db(rms(in, sr, false, 1, 0)) - db(rms(out, sr, false, 1, 0));
+                    double speechLoss = db(rms(v, sr, true, 1, 0)) - db(rms(out, sr, true, 1, 0));
+                    System.out.printf("VARREDURA nível %d alfa %.2f over %.1f: ruído −%.1f dB, voz perde %.1f dB%n", level, alpha, over, pauseDrop, speechLoss);
+                }
+            }
+        }
+    }
+
     @Test
     public void semAtrasoNoAudio() {
         int sr = 48000;
