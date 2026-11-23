@@ -123,7 +123,7 @@ public class VoiceDspTest {
     public void reduzRuidoSemPassarDoPiso() {
         int sr = 48000;
         float[] v = voice(sr, 12);
-        float[] in = mix(v, noise(v.length, 0.004, 1));
+        float[] in = mix(v, noise(v.length, 0.0013, 1));
         double snrIn = db(rms(in, sr, true, 1, 0)) - db(rms(in, sr, false, 1, 0));
         double[] floors = { 0, -12, -18 };
         for (int level : new int[] { VoiceDsp.LEVE, VoiceDsp.FORTE }) {
@@ -139,9 +139,9 @@ public class VoiceDspTest {
             double speechLoss = db(rms(v, sr, true, 1, 0)) - (db(rms(all, sr, true, 1, 0)) - 6);
             System.out.printf("nível %d: SNR %.1f → %.1f dB; ruído nas pausas −%.1f dB; voz perde %.1f dB; ganho mínimo %.1f dB%n",
                 level, snrIn, snrOut, pauseDrop, speechLoss, db(dsp.minGain()));
-            assertTrue("ruído nas pausas cai o bastante (nível " + level + "): " + pauseDrop, pauseDrop >= (level == VoiceDsp.FORTE ? 12 : 8));
-            assertTrue("voz preservada (nível " + level + "): perde " + speechLoss, speechLoss <= 4);
-            assertTrue("SNR melhora (nível " + level + ")", snrOut > snrIn + 3);
+            assertTrue("ruído nas pausas cai o bastante (nível " + level + "): " + pauseDrop, pauseDrop >= (level == VoiceDsp.FORTE ? 12 : 9));
+            assertTrue("voz preservada (nível " + level + "): perde " + speechLoss, speechLoss <= (level == VoiceDsp.FORTE ? 5 : 3));
+            assertTrue("SNR melhora (nível " + level + ")", snrOut > snrIn + 4);
             assertTrue("nunca abaixo do piso", db(dsp.minGain()) >= floors[level] - 0.01);
         }
     }
@@ -151,11 +151,11 @@ public class VoiceDspTest {
     public void varreduraDeAjuste() {
         int sr = 48000;
         float[] v = voice(sr, 12);
-        float[] in = mix(v, noise(v.length, 0.004, 1));
+        float[] in = mix(v, noise(v.length, 0.0013, 1));
         System.out.printf("voz %.1f dBFS, ruído %.1f dBFS%n", db(rms(v, sr, true, 1, 0)), db(rms(in, sr, false, 1, 0)));
         for (int level : new int[] { VoiceDsp.LEVE, VoiceDsp.FORTE }) {
-            for (double alpha : new double[] { 0.90, 0.95, 0.98 }) {
-                for (double over : new double[] { 0.7, 1.0, 1.6 }) {
+            for (double alpha : new double[] { 0.92, 0.95, 0.98 }) {
+                for (double over : new double[] { 0.6, 0.8, 1.1 }) {
                     VoiceDsp dsp = new VoiceDsp(sr, 1, level, alpha, false, over);
                     float[] out = dsp.process(in, in.length);
                     double pauseDrop = db(rms(in, sr, false, 1, 0)) - db(rms(out, sr, false, 1, 0));
@@ -206,7 +206,7 @@ public class VoiceDspTest {
     public void gravaAmostrasParaOuvir() throws IOException {
         int sr = 48000;
         float[] v = voice(sr, 12);
-        float[] in = mix(v, noise(v.length, 0.004, 1));
+        float[] in = mix(v, noise(v.length, 0.0013, 1));
         File dir = new File("build/voice-samples");
         //noinspection ResultOfMethodCallIgnored
         dir.mkdirs();

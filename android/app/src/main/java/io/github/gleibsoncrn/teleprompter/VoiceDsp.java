@@ -8,7 +8,7 @@ package io.github.gleibsoncrn.teleprompter;
  * A redução de ruído foi desenhada para NÃO robotizar a voz (o "musical noise" que os redutores
  * agressivos deixam):
  *  - ruído estimado pelo mínimo do espectro suavizado (acompanha o fundo, ignora a voz);
- *  - SNR a priori "decision-directed" (alfa 0,98), que muda devagar de um quadro para o outro;
+ *  - SNR a priori "decision-directed" (alfa 0,95), que muda devagar de um quadro para o outro;
  *  - ganho suavizado entre bandas vizinhas;
  *  - PISO de ganho: nenhuma banda cai mais que 12 dB (Leve) ou 18 dB (Forte) — nunca zera.
  *
@@ -20,7 +20,8 @@ final class VoiceDsp {
     static final int OFF = 0;
     static final int LEVE = 1;
     static final int FORTE = 2;
-    static final double ALPHA = 0.98;
+    // Ajuste pela varredura do VoiceDspTest: melhor troca entre ruído que some e voz preservada.
+    static final double ALPHA = 0.95;
 
     static int parseLevel(String s) {
         if ("forte".equals(s)) return FORTE;
@@ -167,7 +168,7 @@ final class VoiceDsp {
             java.util.Arrays.fill(gPrev, 1);
             java.util.Arrays.fill(gammaPrev, 1);
             floor = Math.pow(10, (level == FORTE ? -18 : -12) / 20.0);
-            over = overEst > 0 ? overEst : level == FORTE ? 1.6 : 1.0;
+            over = overEst > 0 ? overEst : level == FORTE ? 1.1 : 0.8;
             // o ruído estimado sobe no máximo ~3 dB/s (o mínimo segue o fundo, não a voz)
             rise = Math.pow(10, 3.0 / 10.0 * hop / sr);
 
