@@ -172,14 +172,14 @@ final class VoiceDsp {
             rise = Math.pow(10, 3.0 / 10.0 * hop / sr);
 
             double w0 = 2 * Math.PI * 80 / sr;
-            double alpha = Math.sin(w0) / (2 * Math.sqrt(0.5));
+            double q = Math.sin(w0) / (2 * Math.sqrt(0.5));
             double cos = Math.cos(w0);
-            double a0 = 1 + alpha;
+            double a0 = 1 + q;
             b0 = (1 + cos) / 2 / a0;
             b1 = -(1 + cos) / a0;
             b2 = (1 + cos) / 2 / a0;
             a1 = -2 * cos / a0;
-            a2 = (1 - alpha) / a0;
+            a2 = (1 - q) / a0;
 
             atk = Math.exp(-1 / (0.010 * sr));
             rel = Math.exp(-1 / (0.150 * sr));
