@@ -169,6 +169,19 @@
       <p class="hint">Microfone Bluetooth costuma gravar com qualidade de ligação (abafado). Para voz, prefira o do celular, com fio ou USB.</p>
       </div>
 
+      <div data-native-only>
+      <h3 class="sheet-sub"><span data-icon="mic"></span>Áudio</h3>
+      <p id="native-mic" class="hint">Microfone: verificando…</p>
+      <label class="field">Tratamento de voz
+        <select data-setting="voice">
+          <option value="leve">Leve — tira chiado e ruído de fundo, voz natural</option>
+          <option value="forte">Forte — para lugar barulhento</option>
+          <option value="off">Desligado — som original</option>
+        </select></label>
+      <p class="hint">Aplicado depois de gravar: na tela do vídeo você ouve <strong>Voz tratada</strong> e <strong>Original</strong> e salva o que preferir. O tratamento corta graves (ronco, vento), reduz o ruído de fundo sem zerar nenhuma frequência (por isso não robotiza) e deixa o volume da voz uniforme.</p>
+      <p class="hint">Lapela: prenda no peito, uns 15–20 cm abaixo do queixo. Microfone Bluetooth ligado direto no celular grava com qualidade de ligação (robotizado); receptor USB‑C não tem esse problema.</p>
+      </div>
+
       <div data-web-only>
       <h3 class="sheet-sub"><span data-icon="gauge"></span>Diagnóstico</h3>
       <p class="hint">Grava 8 s com os ajustes atuais (nada é salvo) e mede onde o celular engasga: codificador de vídeo, câmera, quadros perdidos e travadas da tela.</p>
@@ -186,6 +199,10 @@
       <div id="rec-formats" class="segmented" role="tablist" hidden>
         <button id="rec-tab-h" class="seg on" role="tab" data-action="rec-show-h"><span data-icon="rectangle-horizontal"></span>Horizontal</button>
         <button id="rec-tab-v" class="seg" role="tab" data-action="rec-show-v"><span data-icon="rectangle-vertical"></span><span id="rec-v-label">Vertical</span></button>
+      </div>
+      <div id="rec-voice" class="segmented" role="tablist" hidden>
+        <button id="rec-voice-t" class="seg on" role="tab" data-action="rec-voice-t" disabled><span data-icon="audio-lines"></span><span id="rec-voice-label">Voz tratada</span></button>
+        <button id="rec-voice-o" class="seg" role="tab" data-action="rec-voice-o"><span data-icon="mic"></span>Original</button>
       </div>
       <video id="rec-preview" class="rec-preview" controls playsinline></video>
       <p id="rec-details" class="hint" hidden></p>

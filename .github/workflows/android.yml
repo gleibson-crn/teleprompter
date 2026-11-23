@@ -73,6 +73,21 @@ jobs:
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.p12" >> "$GITHUB_ENV"
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
+      - name: Testes do tratamento de voz (JUnit, sem aparelho)
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest --no-daemon --tests 'io.github.gleibsoncrn.teleprompter.*'
+
+      # Amostras para OUVIR: voz sintética com ruído → original / leve / forte.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: amostras-voz
+          path: android/app/build/voice-samples/
+          if-no-files-found: ignore
+          retention-days: 30
+
       - name: Build do APK
         working-directory: android
         env:

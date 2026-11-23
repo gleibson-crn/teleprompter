@@ -46,6 +46,7 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
   // { h: arquivo horizontal, v: vertical (quando gerado) } — cada um { path, width, height, fpsReal, encoder… }
   let recNative = null;
   let recNativeShared = false;
+  let recVoice = 't'; // APK: 't' voz tratada | 'o' original (horizontal)
   let wakeLock = null;
   let meterTimer = 0;
   let restarting = false;
@@ -347,6 +348,8 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
     sel.value = s.micId;
     if (sel.value !== s.micId) sel.value = '';
 
+    if (isNative) capture.nativeMic().then((m) => { $('native-mic').textContent = micText(m); });
+
     const info = capture.micInfo();
     $('mic-info').textContent = info
       ? `Em uso: ${info.label || 'microfone'}${info.sampleRate ? ` · ${Math.round(info.sampleRate / 1000)} kHz` : ''} · redução de ruído do aparelho: ${info.noiseSuppression ? 'ligada' : 'desligada'}`
@@ -519,29 +522,67 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
     pause();
     if (!active) { if (r?.path) NativeCam.deleteFile({ path: r.path }).catch(() => {}); return; }
     if (!r?.ok) { toast('A gravação falhou.'); return; }
-    recNative = { h: r };
+    // Voz: com tratamento ligado e áudio no arquivo, gera a cópia tratada (e o vertical já tratado).
+    const voice = r.audioRate ? (getSettings().voice || 'leve') : 'off';
+    recNative = { h: r, voice };
     recNativeShared = false;
+    recVoice = voice !== 'off' ? 't' : 'o';
+    voiceTabs(recVoice);
     recInfo = { points: r.pathPoints ?? 0, vertical: !!r.vertical };
     $('rec-formats').hidden = !r.vertical;
+    $('rec-voice').hidden = voice === 'off';
     showFormat('h');
     $('rec-details').hidden = false;
     $('btn-rec-share').hidden = false;
     $('rec-result').hidden = false;
-    if (r.vertical) makeVerticalNative(r.path);
-    else if (cameraMode && capture.needsRestart()) restartCamera();
+    postNative(recNative);
   }
 
-  /** APK: o vertical é gerado pelo app (Media3, codificador de hardware). */
-  async function makeVerticalNative(path) {
+  /** Depois da gravação, um de cada vez (dois Transformers juntos pesam no aparelho): voz → vertical. */
+  async function postNative(mine) {
+    if (mine.voice !== 'off') await treatNative(mine);
+    if (recNative === mine && mine.h.vertical) await makeVerticalNative(mine);
+    if (recNative === mine && cameraMode && capture.needsRestart()) restartCamera();
+  }
+
+  /** APK: cópia com a voz tratada (só o áudio é recodificado; o original fica guardado). */
+  async function treatNative(mine) {
+    const tab = $('rec-voice-t');
+    const label = $('rec-voice-label');
+    tab.disabled = true;
+    label.textContent = 'Tratando 0%';
+    renderAbort = { abort: () => capture.cancelVertical() };
+    try {
+      const t = await capture.treatAudio(mine.h.path, mine.voice, (f) => { if (recNative === mine) label.textContent = `Tratando ${Math.floor(f * 100)}%`; });
+      if (recNative !== mine) { NativeCam.deleteFile({ path: t.path }).catch(() => {}); return; }
+      mine.t = t;
+      label.textContent = 'Voz tratada';
+      tab.disabled = false;
+      if (recSel === 'h' && recVoice === 't') showFormat('h', { keepTime: true });
+    } catch {
+      if (recNative === mine) {
+        label.textContent = 'Voz tratada (falhou)';
+        showVoice('o');
+        toast('Não foi possível tratar a voz; ficou o som original.');
+      }
+    } finally {
+      if (recNative === mine) renderAbort = null;
+    }
+  }
+
+  /** APK: o vertical é gerado pelo app (Media3, codificador de hardware), com a mesma voz tratada. */
+  async function makeVerticalNative(mine) {
     const tab = $('rec-tab-v');
     const label = $('rec-v-label');
     tab.disabled = true;
     label.textContent = 'Gerando 0%';
-    const mine = recNative;
     renderAbort = { abort: () => capture.cancelVertical() };
     try {
-      const v = await capture.makeVertical(path, (f) => { if (recNative === mine) label.textContent = `Gerando ${Math.floor(f * 100)}%`; });
+      // Voz tratada falhou → vertical com o som original (igual ao que ficou no horizontal).
+      const voice = mine.voice !== 'off' && mine.t ? mine.voice : 'off';
+      const v = await capture.makeVertical(mine.h.path, (f) => { if (recNative === mine) label.textContent = `Gerando ${Math.floor(f * 100)}%`; }, voice);
       if (recNative !== mine) { NativeCam.deleteFile({ path: v.path }).catch(() => {}); return; }
+      v.voice = voice;
       mine.v = v;
       label.textContent = 'Vertical';
       tab.disabled = false;
@@ -550,13 +591,45 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
       if (recNative === mine) { label.textContent = 'Vertical (falhou)'; toast('Não foi possível gerar o vertical.'); }
     } finally {
       if (recNative === mine) renderAbort = null;
-      if (cameraMode && capture.needsRestart()) restartCamera();
     }
+  }
+
+  const MIC_KIND = { usb: 'USB', fio: 'com fio', interno: 'do celular', bluetooth: 'Bluetooth', outro: 'externo' };
+  function micText(m) {
+    if (!m?.type) return 'Microfone: não identificado.';
+    const rate = m.rate ? ` · ${Math.round(m.rate / 100) / 10} kHz` : '';
+    const name = m.name && m.type !== 'interno' ? ` — ${m.name}` : '';
+    const tip = m.type === 'interno' ? ' Para usar a lapela, conecte o receptor USB‑C antes de abrir a câmera.'
+      : m.type === 'bluetooth' ? ' Atenção: Bluetooth direto grava com qualidade de ligação.' : '';
+    return `Microfone: ${MIC_KIND[m.type] || m.type}${name}${rate}.${tip}`;
+  }
+
+  /** Arquivo nativo que está na tela (formato × voz). */
+  function curNative() {
+    if (!recNative) return null;
+    if (recSel === 'v') return recNative.v;
+    return recVoice === 't' && recNative.t ? recNative.t : recNative.h;
   }
 
   function nativeDetails(r) {
     const enc = r.encoder ? ` · ${r.encoder}${r.encoderHardware === false ? ' (software)' : r.encoderHardware ? ' (hardware)' : ''}` : '';
-    return `${r.width || '?'}×${r.height || '?'} · ${r.fpsReal ?? '?'} fps${enc}`;
+    const mic = recNative?.h.mic?.type ? ` · mic ${MIC_KIND[recNative.h.mic.type] || recNative.h.mic.type}${recNative.h.mic.rate ? ` ${Math.round(recNative.h.mic.rate / 100) / 10} kHz` : ''}` : '';
+    const isT = r === recNative?.t || (r === recNative?.v && r.voice && r.voice !== 'off');
+    const voz = r.audioRate ? ` · voz ${isT ? `tratada (${recNative.voice})` : 'original'}` : ' · sem áudio';
+    return `${r.width || '?'}×${r.height || '?'} · ${r.fpsReal ?? '?'} fps${enc}${mic}${voz}`;
+  }
+
+  function voiceTabs(k) {
+    $('rec-voice-t').classList.toggle('on', k === 't');
+    $('rec-voice-o').classList.toggle('on', k === 'o');
+  }
+
+  /** Voz tratada × original (horizontal). Mantém o ponto do vídeo para comparar. */
+  function showVoice(k) {
+    if (!recNative || (k === 't' && !recNative.t)) return;
+    recVoice = k;
+    voiceTabs(k);
+    if (recSel === 'h') showFormat('h', { keepTime: true });
   }
 
   async function toggleRecording() {
@@ -629,16 +702,27 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
     }
   }
 
-  function showFormat(f) {
+  function showFormat(f, { keepTime = false } = {}) {
     if (recNative) {
       if (!recNative[f]) return;
       recSel = f;
+      const cur = curNative();
       const preview = $('rec-preview');
+      const t = keepTime ? preview.currentTime : 0;
+      const wasPlaying = keepTime && !preview.paused;
       preview.pause();
-      preview.src = fileUrl(recNative[f].path);
-      $('rec-details').textContent = nativeDetails(recNative[f]);
+      preview.src = fileUrl(cur.path);
+      if (t > 0) {
+        preview.addEventListener('loadedmetadata', () => {
+          preview.currentTime = t;
+          if (wasPlaying) preview.play().catch(() => {});
+        }, { once: true });
+      }
+      $('rec-details').textContent = nativeDetails(cur);
       $('rec-tab-h').classList.toggle('on', f === 'h');
       $('rec-tab-v').classList.toggle('on', f === 'v');
+      // A escolha de voz vale para o horizontal; o vertical já sai com a voz tratada.
+      $('rec-voice').hidden = recNative.voice === 'off' || f === 'v';
       return;
     }
     if (!recBlobs[f]) return;
@@ -668,10 +752,11 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
     if (recNative) {
       // Compartilhado: o outro app pode ainda estar lendo; o arquivo some no próximo início do app.
       if (!recNativeShared) {
-        for (const r of [recNative.h, recNative.v]) if (r) NativeCam.deleteFile({ path: r.path }).catch(() => {});
+        for (const r of [recNative.h, recNative.t, recNative.v]) if (r) NativeCam.deleteFile({ path: r.path }).catch(() => {});
       }
       recNative = null;
       $('rec-details').hidden = true;
+      $('rec-voice').hidden = true;
     } else if (preview.src) URL.revokeObjectURL(preview.src);
     preview.removeAttribute('src');
     preview.load(); // descarrega a mídia; sem isso o áudio segue tocando em segundo plano
@@ -688,7 +773,7 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
       const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}${String(d.getSeconds()).padStart(2, '0')}`;
       try {
         const suffix = dualPending() ? (recSel === 'v' ? '-vertical' : '-horizontal') : '';
-        await NativeCam.saveToGallery({ path: recNative[recSel].path, name: `teleprompter-${stamp}${suffix}.mp4` });
+        await NativeCam.saveToGallery({ path: curNative().path, name: `teleprompter-${stamp}${suffix}.mp4` });
         if (dualPending()) toast(`${recSel === 'v' ? 'Vertical' : 'Horizontal'} salvo na galeria (Movies/Teleprompter).`);
         else { toast('Vídeo salvo na galeria (Movies/Teleprompter).'); closeRecording(); }
       } catch (e) {
@@ -713,7 +798,7 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
   async function shareRecording() {
     if (recNative) {
       recNativeShared = true;
-      NativeCam.shareFile({ path: recNative[recSel].path }).catch((e) => toast('Não foi possível compartilhar: ' + (e?.message || e)));
+      NativeCam.shareFile({ path: curNative().path }).catch((e) => toast('Não foi possível compartilhar: ' + (e?.message || e)));
       return;
     }
     try {
@@ -773,7 +858,7 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
   return {
     open, close, applySettings, toggle, changeSpeed,
     restart: () => { pause(); cancelCountdown(); setPos(0); },
-    toggleRecording, saveRecording, shareRecording, discardRecording: closeRecording, showFormat,
+    toggleRecording, saveRecording, shareRecording, discardRecording: closeRecording, showFormat, showVoice,
     isRecording,
     isCamera: () => cameraMode,
     openAv: () => { $('settings').hidden = true; $('av').hidden = false; renderAv(); },

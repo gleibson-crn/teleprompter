@@ -147,10 +147,18 @@ export function createNativeCapture({ video, getSettings, setSetting, toast, ask
     videoSize,
     recStart: () => NativeCam.startRecording(),
     recStop: () => NativeCam.stopRecording(),
-    makeVertical: (path, onProgress) => {
+    /** Vertical 9:16 a partir do ORIGINAL; voice = tratamento de voz aplicado também nele. */
+    makeVertical: (path, onProgress, voice = 'off') => {
       const sub = Promise.resolve(NativeCam.addListener('verticalProgress', ({ p }) => onProgress(p / 100)));
-      return NativeCam.makeVertical({ path }).finally(() => sub.then((h) => h?.remove()));
+      return NativeCam.makeVertical({ path, voice }).finally(() => sub.then((h) => h?.remove()));
     },
+    /** Cópia da gravação com a voz tratada ('leve' | 'forte'); o original fica intacto. */
+    treatAudio: (path, voice, onProgress) => {
+      const sub = Promise.resolve(NativeCam.addListener('voiceProgress', ({ p }) => onProgress(p / 100)));
+      return NativeCam.treatAudio({ path, voice }).finally(() => sub.then((h) => h?.remove()));
+    },
+    /** Microfone que vai gravar: { type: 'usb'|'fio'|'interno'|'bluetooth'|'outro', name, rate }. */
+    nativeMic: () => NativeCam.micInfo().catch(() => null),
     cancelVertical: () => NativeCam.cancelVertical().catch(() => {}),
   };
 }

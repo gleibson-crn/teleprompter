@@ -10,6 +10,7 @@ import androidx.annotation.OptIn;
 import androidx.media3.common.Effect;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
+import androidx.media3.common.audio.AudioProcessor;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.effect.MatrixTransformation;
 import androidx.media3.effect.Presentation;
@@ -23,13 +24,14 @@ import androidx.media3.transformer.Transformer;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
- * Gera o vídeo vertical (9:16) a partir do horizontal gravado + caminho do recorte (Reframer).
- * Media3 Transformer: decodifica, move o quadro para o centro do recorte, corta 9:16 e
- * recodifica no codificador de HARDWARE (bem mais rápido que tocar e regravar, como no PWA).
+ * Pós-gravação com o Media3 Transformer:
+ *  - VERTICAL (9:16): a partir do horizontal gravado + caminho do recorte (Reframer), move o quadro
+ *    para o centro do recorte, corta 9:16 e recodifica no codificador de HARDWARE;
+ *  - VOZ: aplica o tratamento de voz (VoiceAudioProcessor). Sem caminho do recorte, só o áudio é
+ *    recodificado e o vídeo é copiado como está.
  * Tudo na thread principal (exigência do Transformer); o trabalho pesado roda no codec/GPU.
  */
 @OptIn(markerClass = UnstableApi.class)
@@ -49,36 +51,24 @@ final class VerticalExporter {
     private Runnable poll;
 
     /**
+     * @param path caminho do recorte; null = não mexe no vídeo (só trata o áudio)
      * @param srcW largura do horizontal como ele aparece (já girado)
      * @param srcH altura idem
+     * @param voiceLevel VoiceDsp.OFF / LEVE / FORTE
      */
-    void start(Context ctx, File src, File out, List<Reframer.Point> path, int srcW, int srcH, Callback cb) {
+    void start(Context ctx, File src, File out, List<Reframer.Point> path, int srcW, int srcH, int voiceLevel, Callback cb) {
         cancel();
-        // Recorte: altura inteira; largura 9:16 arredondada para múltiplo de 16 (alguns
-        // codificadores MediaTek recusam outras larguras). 1080p → 608×1080; 720p → 400×720.
-        final int outH = srcH & ~1;
-        final int outW = Math.max(16, Math.round(outH * 9f / 16f / 16f) * 16);
-        final double half = (outH * 9.0 / 16.0) / srcW / 2.0;
-        final List<Reframer.Point> p = new ArrayList<>(path);
-
-        MatrixTransformation move = (long presentationTimeUs) -> {
-            double c = Reframer.centerAt(p, presentationTimeUs / 1000.0 + LOOKAHEAD_MS);
-            c = Math.max(half, Math.min(1 - half, c));
-            Matrix m = new Matrix();
-            // Coordenadas normalizadas (-1..1): leva o centro do recorte para o meio do quadro.
-            m.postTranslate((float) ((0.5 - c) * 2.0), 0f);
-            return m;
-        };
-        List<Effect> video = new ArrayList<>();
-        video.add(move);
-        video.add(Presentation.createForWidthAndHeight(outW, outH, Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP));
+        List<AudioProcessor> audio = new ArrayList<>();
+        if (voiceLevel != VoiceDsp.OFF) audio.add(new VoiceAudioProcessor(voiceLevel));
+        List<Effect> video = path != null ? cropEffects(path, srcW, srcH) : new ArrayList<>();
 
         EditedMediaItem item = new EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(src)))
-            .setEffects(new Effects(Collections.emptyList(), video))
+            .setEffects(new Effects(audio, video))
             .build();
 
-        transformer = new Transformer.Builder(ctx)
-            .setVideoMimeType(MimeTypes.VIDEO_H264)
+        Transformer.Builder tb = new Transformer.Builder(ctx);
+        if (path != null) tb.setVideoMimeType(MimeTypes.VIDEO_H264);
+        transformer = tb
             .addListener(new Transformer.Listener() {
                 @Override
                 public void onCompleted(Composition composition, ExportResult result) {
@@ -107,6 +97,28 @@ final class VerticalExporter {
             }
         };
         main.postDelayed(poll, 300);
+    }
+
+    private static List<Effect> cropEffects(List<Reframer.Point> path, int srcW, int srcH) {
+        // Recorte: altura inteira; largura 9:16 arredondada para múltiplo de 16 (alguns
+        // codificadores MediaTek recusam outras larguras). 1080p → 608×1080; 720p → 400×720.
+        final int outH = srcH & ~1;
+        final int outW = Math.max(16, Math.round(outH * 9f / 16f / 16f) * 16);
+        final double half = (outH * 9.0 / 16.0) / srcW / 2.0;
+        final List<Reframer.Point> p = new ArrayList<>(path);
+
+        MatrixTransformation move = (long presentationTimeUs) -> {
+            double c = Reframer.centerAt(p, presentationTimeUs / 1000.0 + LOOKAHEAD_MS);
+            c = Math.max(half, Math.min(1 - half, c));
+            Matrix m = new Matrix();
+            // Coordenadas normalizadas (-1..1): leva o centro do recorte para o meio do quadro.
+            m.postTranslate((float) ((0.5 - c) * 2.0), 0f);
+            return m;
+        };
+        List<Effect> video = new ArrayList<>();
+        video.add(move);
+        video.add(Presentation.createForWidthAndHeight(outW, outH, Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP));
+        return video;
     }
 
     boolean running() { return transformer != null; }

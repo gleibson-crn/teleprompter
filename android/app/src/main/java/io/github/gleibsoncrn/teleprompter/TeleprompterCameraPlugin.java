@@ -12,6 +12,10 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.hardware.display.DisplayManager;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
+import android.media.AudioRecordingConfiguration;
+import android.media.audiofx.AudioEffect;
 import android.media.MediaCodecInfo;
 import android.media.MediaCodecList;
 import android.media.MediaExtractor;
@@ -119,6 +123,11 @@ public class TeleprompterCameraPlugin extends Plugin {
     private List<Reframer.Point> lastPath;
     private int lastW;
     private int lastH;
+
+    // Tratamento de voz (etapa 3): pós-gravação, cópia tratada ao lado do original.
+    private final VerticalExporter voiceExporter = new VerticalExporter();
+    private File voiceOut;
+    private JSObject recMic; // microfone que gravou (lido logo após o início da gravação)
 
     @Override
     public void load() {
@@ -367,9 +376,14 @@ public class TeleprompterCameraPlugin extends Plugin {
                 reframer.setEnabled(isLandscape());
                 if (analysis != null) analysis.setTargetRotation(displayRotation());
             }
+            recMic = null;
             recording = pending.start(ContextCompat.getMainExecutor(getContext()), event -> {
                 // Caminho do recorte conta do início real da gravação (t = 0 do arquivo).
                 if (event instanceof VideoRecordEvent.Start && reframer != null && analysis != null) reframer.beginPath();
+                // Qual microfone o Android escolheu de fato (o áudio abre logo depois do Start).
+                if (event instanceof VideoRecordEvent.Start) previewView.postDelayed(() -> {
+                    if (recording != null) recMic = readMic(true);
+                }, 700);
                 if (event instanceof VideoRecordEvent.Finalize) onFinalize((VideoRecordEvent.Finalize) event);
             });
             JSObject r = new JSObject();
@@ -394,9 +408,11 @@ public class TeleprompterCameraPlugin extends Plugin {
         final long durNs = ev.getRecordingStats().getRecordedDurationNanos();
         final int error = ev.getError();
         final List<Reframer.Point> path = reframer != null ? reframer.endPath() : null;
+        final JSObject mic = recMic != null ? recMic : readMic(false);
         new Thread(() -> {
             JSObject r = new JSObject();
             r.put("path", f.getAbsolutePath());
+            r.put("mic", mic);
             r.put("durationMs", durNs / 1_000_000L);
             if (error != VideoRecordEvent.Finalize.ERROR_NONE) r.put("error", error);
             boolean ok = f.exists() && f.length() > 0;
@@ -455,7 +471,13 @@ public class TeleprompterCameraPlugin extends Plugin {
             for (int i = 0; i < ex.getTrackCount(); i++) {
                 MediaFormat fmt = ex.getTrackFormat(i);
                 String mime = fmt.getString(MediaFormat.KEY_MIME);
-                if (mime == null || !mime.startsWith("video/")) continue;
+                if (mime != null && mime.startsWith("audio/")) {
+                    if (fmt.containsKey(MediaFormat.KEY_SAMPLE_RATE)) r.put("audioRate", fmt.getInteger(MediaFormat.KEY_SAMPLE_RATE));
+                    if (fmt.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) r.put("audioChannels", fmt.getInteger(MediaFormat.KEY_CHANNEL_COUNT));
+                    if (fmt.containsKey(MediaFormat.KEY_BIT_RATE)) r.put("audioBitrate", fmt.getInteger(MediaFormat.KEY_BIT_RATE));
+                    continue;
+                }
+                if (mime == null || !mime.startsWith("video/") || r.has("codec")) continue;
                 r.put("codec", mime);
                 MediaFormat probe = MediaFormat.createVideoFormat(mime,
                     fmt.getInteger(MediaFormat.KEY_WIDTH), fmt.getInteger(MediaFormat.KEY_HEIGHT));
@@ -467,7 +489,6 @@ public class TeleprompterCameraPlugin extends Plugin {
                         if (info.getName().equals(name)) r.put("encoderHardware", info.isHardwareAccelerated());
                     }
                 }
-                break;
             }
         } catch (Exception ignored) {
             // idem
@@ -500,12 +521,14 @@ public class TeleprompterCameraPlugin extends Plugin {
         final List<Reframer.Point> path = lastPath;
         final int w = lastW;
         final int h = lastH;
+        // O vertical sai do ORIGINAL com o mesmo tratamento de voz (uma recodificação de áudio só).
+        final int level = VoiceDsp.parseLevel(call.getString("voice", "off"));
         getActivity().runOnUiThread(() -> {
             String base = f.getName().replaceFirst("\\.mp4$", "");
             final File out = new File(recDir(), base + "-vertical.mp4");
             exportOut = out;
             try {
-                exporter.start(getContext(), f, out, path, w, h, new VerticalExporter.Callback() {
+                exporter.start(getContext(), f, out, path, w, h, level, new VerticalExporter.Callback() {
                     @Override public void onProgress(int percent) {
                         JSObject ev = new JSObject();
                         ev.put("p", percent);
@@ -533,6 +556,7 @@ public class TeleprompterCameraPlugin extends Plugin {
         });
     }
 
+    /** Cancela o que estiver sendo gerado depois da gravação (vertical e/ou voz tratada). */
     @PluginMethod
     public void cancelVertical(PluginCall call) {
         getActivity().runOnUiThread(() -> {
@@ -542,13 +566,150 @@ public class TeleprompterCameraPlugin extends Plugin {
                     exportOut.delete();
                 exportOut = null;
             }
+            if (voiceExporter.running()) {
+                voiceExporter.cancel();
+                if (voiceOut != null) //noinspection ResultOfMethodCallIgnored
+                    voiceOut.delete();
+                voiceOut = null;
+            }
             call.resolve();
         });
+    }
+
+    // ---------------------------------------------------------------- voz
+
+    /** Cópia da gravação com a voz tratada (vídeo copiado; o original fica intacto). */
+    @PluginMethod
+    public void treatAudio(PluginCall call) {
+        File f = ownFile(call);
+        final int level = VoiceDsp.parseLevel(call.getString("voice", "leve"));
+        if (f == null || level == VoiceDsp.OFF) {
+            call.reject("Nada a tratar.");
+            return;
+        }
+        getActivity().runOnUiThread(() -> {
+            String base = f.getName().replaceFirst("\\.mp4$", "");
+            final File out = new File(recDir(), base + "-voz.mp4");
+            voiceOut = out;
+            try {
+                voiceExporter.start(getContext(), f, out, null, 0, 0, level, new VerticalExporter.Callback() {
+                    @Override public void onProgress(int percent) {
+                        JSObject ev = new JSObject();
+                        ev.put("p", percent);
+                        notifyListeners("voiceProgress", ev);
+                    }
+                    @Override public void onDone(File o) {
+                        voiceOut = null;
+                        new Thread(() -> {
+                            JSObject r = new JSObject();
+                            r.put("path", o.getAbsolutePath());
+                            r.put("ok", o.exists() && o.length() > 0);
+                            readMetadata(o, r);
+                            call.resolve(r);
+                        }).start();
+                    }
+                    @Override public void onError(String message) {
+                        voiceOut = null;
+                        call.reject("Não foi possível tratar a voz: " + message);
+                    }
+                });
+            } catch (Exception e) {
+                voiceOut = null;
+                call.reject("Não foi possível tratar a voz: " + e.getMessage(), "EXPORT", e);
+            }
+        });
+    }
+
+    /** Microfone que vai gravar (ou que está gravando): tipo, nome e taxa. */
+    @PluginMethod
+    public void micInfo(PluginCall call) {
+        call.resolve(readMic(recording != null));
+    }
+
+    /**
+     * @param active true = lê a gravação em andamento (dispositivo e fonte reais, efeitos do
+     *               sistema aplicados); false = estima pelo dispositivo de entrada preferido.
+     */
+    private JSObject readMic(boolean active) {
+        JSObject m = new JSObject();
+        try {
+            AudioManager am = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+            AudioDeviceInfo dev = null;
+            if (active) {
+                for (AudioRecordingConfiguration c : am.getActiveRecordingConfigurations()) {
+                    if (c.getAudioDevice() == null) continue;
+                    dev = c.getAudioDevice();
+                    m.put("rate", c.getFormat().getSampleRate());
+                    m.put("source", c.getClientAudioSource());
+                    StringBuilder fx = new StringBuilder();
+                    for (AudioEffect.Descriptor d : c.getClientEffects()) fx.append(fx.length() > 0 ? ", " : "").append(d.name);
+                    for (AudioEffect.Descriptor d : c.getEffects()) fx.append(fx.length() > 0 ? ", " : "").append(d.name);
+                    m.put("effects", fx.toString());
+                    m.put("live", true);
+                    break;
+                }
+            }
+            if (dev == null) {
+                // Mesma preferência do Android ao gravar: USB > fone com fio > interno.
+                int best = -1;
+                for (AudioDeviceInfo d : am.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
+                    int p = micRank(d.getType());
+                    if (p > best) { best = p; dev = d; }
+                }
+            }
+            if (dev != null) {
+                m.put("type", micKind(dev.getType()));
+                CharSequence name = dev.getProductName();
+                m.put("name", name != null ? name.toString() : "");
+                if (!m.has("rate")) {
+                    int max = 0;
+                    for (int r : dev.getSampleRates()) max = Math.max(max, r);
+                    if (max > 0) m.put("rate", max);
+                }
+            }
+        } catch (Exception ignored) {
+            // só informativo
+        }
+        return m;
+    }
+
+    private static int micRank(int type) {
+        switch (type) {
+            case AudioDeviceInfo.TYPE_USB_DEVICE:
+            case AudioDeviceInfo.TYPE_USB_HEADSET:
+            case AudioDeviceInfo.TYPE_USB_ACCESSORY:
+                return 3;
+            case AudioDeviceInfo.TYPE_WIRED_HEADSET:
+                return 2;
+            case AudioDeviceInfo.TYPE_BUILTIN_MIC:
+                return 1;
+            default:
+                return 0;
+        }
+    }
+
+    private static String micKind(int type) {
+        switch (type) {
+            case AudioDeviceInfo.TYPE_USB_DEVICE:
+            case AudioDeviceInfo.TYPE_USB_HEADSET:
+            case AudioDeviceInfo.TYPE_USB_ACCESSORY:
+                return "usb";
+            case AudioDeviceInfo.TYPE_WIRED_HEADSET:
+                return "fio";
+            case AudioDeviceInfo.TYPE_BLUETOOTH_SCO:
+            case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
+                return "bluetooth";
+            case AudioDeviceInfo.TYPE_BUILTIN_MIC:
+                return "interno";
+            default:
+                return "outro";
+        }
     }
 
     @Override
     protected void handleOnDestroy() {
         exporter.cancel();
+        voiceExporter.cancel();
         if (reframer != null) reframer.close();
         if (analysisExec != null) analysisExec.shutdown();
         if (provider != null) provider.unbindAll();

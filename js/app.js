@@ -290,6 +290,8 @@ const ACTIONS = {
   'rec-share': () => prompter.shareRecording(),
   'rec-show-h': () => prompter.showFormat('h'),
   'rec-show-v': () => prompter.showFormat('v'),
+  'rec-voice-t': () => prompter.showVoice('t'),
+  'rec-voice-o': () => prompter.showVoice('o'),
   'rec-discard': async () => {
     if (await ask({ title: 'Descartar esta gravação?', message: 'O vídeo será apagado e não dá para recuperar.', ok: 'Descartar' })) prompter.discardRecording();
   },

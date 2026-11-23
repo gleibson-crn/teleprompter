@@ -32,6 +32,16 @@ android {
             }
         }
     }
+    // Testes JUnit (tratamento de voz): mostra o resultado e o que o teste imprime no log do CI.
+    testOptions {
+        unitTests.all {
+            testLogging {
+                events "passed", "failed"
+                showStandardStreams = true
+                exceptionFormat "full"
+            }
+        }
+    }
     buildTypes {
         release {
             if (System.getenv("ANDROID_KEYSTORE_PATH")) signingConfig signingConfigs.release
