@@ -22,13 +22,17 @@ final class AudioSync {
 
     /** Envelope: média do |x| em blocos de STEP_MS, em escala log (voz baixa e alta pesam parecido). */
     static float[] envelope(float[] x, int rate) {
-        int blk = Math.max(1, rate * STEP_MS / 1000);
-        int n = x.length / blk;
+        // Limites FRACIONÁRIOS: a 44,1 kHz um bloco de 2 ms tem 88,2 amostras; arredondar para 88
+        // escorregaria ~45 ms a cada 20 s e a sincronia sairia errada.
+        double blk = rate * STEP_MS / 1000.0;
+        int n = (int) (x.length / blk);
         float[] e = new float[n];
         for (int i = 0; i < n; i++) {
+            int from = (int) Math.round(i * blk);
+            int to = Math.min(x.length, (int) Math.round((i + 1) * blk));
             double s = 0;
-            for (int j = 0; j < blk; j++) s += Math.abs(x[i * blk + j]);
-            e[i] = (float) Math.log(1e-4 + s / blk);
+            for (int j = from; j < to; j++) s += Math.abs(x[j]);
+            e[i] = (float) Math.log(1e-4 + s / Math.max(1, to - from));
         }
         return e;
     }
