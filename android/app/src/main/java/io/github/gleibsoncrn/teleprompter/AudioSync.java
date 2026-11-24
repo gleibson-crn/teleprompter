@@ -34,7 +34,15 @@ final class AudioSync {
             for (int j = from; j < to; j++) s += Math.abs(x[j]);
             e[i] = (float) Math.log(1e-4 + s / Math.max(1, to - from));
         }
-        return e;
+        // Média móvel de 10 ms (centrada): tira o tremido fino sem mover o pico da correlação.
+        float[] m = new float[n];
+        for (int i = 0; i < n; i++) {
+            double acc = 0;
+            int k = 0;
+            for (int j = Math.max(0, i - 2); j <= Math.min(n - 1, i + 2); j++) { acc += e[j]; k++; }
+            m[i] = (float) (acc / k);
+        }
+        return m;
     }
 
     /**
