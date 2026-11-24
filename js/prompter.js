@@ -522,6 +522,7 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
     pause();
     if (!active) { if (r?.path) NativeCam.deleteFile({ path: r.path }).catch(() => {}); return; }
     if (!r?.ok) { toast('A gravação falhou.'); return; }
+    if (r.micWarn) toast(r.micWarn);
     // Voz: com tratamento ligado e áudio no arquivo, gera a cópia tratada (e o vertical já tratado).
     const voice = r.audioRate ? (getSettings().voice || 'leve') : 'off';
     recNative = { h: r, voice };
@@ -599,7 +600,8 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
     if (!m?.type) return 'Microfone: não identificado.';
     const rate = m.rate ? ` · ${Math.round(m.rate / 100) / 10} kHz` : '';
     const name = m.name && m.type !== 'interno' ? ` — ${m.name}` : '';
-    const tip = m.type === 'interno' ? ' Para usar a lapela, conecte o receptor USB‑C antes de abrir a câmera.'
+    if (getSettings().micSource === 'interno' && m.type !== 'interno') return 'Microfone: do celular (escolhido acima).';
+    const tip = m.type === 'interno' ? ' Para usar a lapela, conecte o receptor USB‑C.'
       : m.type === 'bluetooth' ? ' Atenção: Bluetooth direto grava com qualidade de ligação.' : '';
     return `Microfone: ${MIC_KIND[m.type] || m.type}${name}${rate}.${tip}`;
   }
@@ -613,7 +615,9 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
 
   function nativeDetails(r) {
     const enc = r.encoder ? ` · ${r.encoder}${r.encoderHardware === false ? ' (software)' : r.encoderHardware ? ' (hardware)' : ''}` : '';
-    const mic = recNative?.h.mic?.type ? ` · mic ${MIC_KIND[recNative.h.mic.type] || recNative.h.mic.type}${recNative.h.mic.rate ? ` ${Math.round(recNative.h.mic.rate / 100) / 10} kHz` : ''}` : '';
+    const m = recNative?.h.mic;
+    const sync = m?.sync === 'voz' ? ' (sincronizado pela voz)' : m?.sync ? ' (sincronizado pelo relógio)' : '';
+    const mic = m?.type ? ` · mic ${MIC_KIND[m.type] || m.type}${m.rate ? ` ${Math.round(m.rate / 100) / 10} kHz` : ''}${sync}` : '';
     const isT = r === recNative?.t || (r === recNative?.v && r.voice && r.voice !== 'off');
     const voz = r.audioRate ? ` · voz ${isT ? `tratada (${recNative.voice})` : 'original'}` : ' · sem áudio';
     return `${r.width || '?'}×${r.height || '?'} · ${r.fpsReal ?? '?'} fps${enc}${mic}${voz}`;

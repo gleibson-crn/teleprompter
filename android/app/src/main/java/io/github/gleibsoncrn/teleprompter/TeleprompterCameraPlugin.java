@@ -128,6 +128,8 @@ public class TeleprompterCameraPlugin extends Plugin {
     private final VerticalExporter voiceExporter = new VerticalExporter();
     private File voiceOut;
     private JSObject recMic; // microfone que gravou (lido logo após o início da gravação)
+    private ExternalMic extMic; // lapela USB/fone com fio gravado à parte (a câmera usaria o do celular)
+    private volatile long videoStartBootNs = -1;
 
     @Override
     public void load() {
@@ -143,7 +145,7 @@ public class TeleprompterCameraPlugin extends Plugin {
         });
         // Gravações de sessões anteriores que não foram salvas: apaga.
         File dir = recDir();
-        File[] old = dir.listFiles((d, name) -> name.startsWith(REC_PREFIX) && name.endsWith(".mp4"));
+        File[] old = dir.listFiles((d, name) -> name.startsWith(REC_PREFIX) && (name.endsWith(".mp4") || name.endsWith(".pcm")));
         if (old != null) for (File f : old) //noinspection ResultOfMethodCallIgnored
             f.delete();
         //noinspection ResultOfMethodCallIgnored
@@ -377,7 +379,27 @@ public class TeleprompterCameraPlugin extends Plugin {
                 if (analysis != null) analysis.setTargetRotation(displayRotation());
             }
             recMic = null;
+            // Microfone externo (lapela USB‑C, fone com fio): a câmera usaria o do celular, então o
+            // app grava o externo à parte e troca o áudio ao parar. Começa ANTES do vídeo.
+            extMic = null;
+            videoStartBootNs = -1;
+            if (audio && !"interno".equals(call.getString("mic", "auto"))) {
+                AudioDeviceInfo dev = ExternalMic.find(getContext());
+                if (dev != null) {
+                    ExternalMic m = new ExternalMic();
+                    File pcm = new File(recDir(), recFile.getName().replaceFirst("\\.mp4$", "-mic.pcm"));
+                    if (m.start(dev, pcm)) extMic = m;
+                }
+            }
             recording = pending.start(ContextCompat.getMainExecutor(getContext()), event -> {
+                // Relógio do 1º quadro (fallback da sincronia): agora − duração já gravada, o menor visto.
+                if (event instanceof VideoRecordEvent.Status) {
+                    long d = event.getRecordingStats().getRecordedDurationNanos();
+                    if (d > 0) {
+                        long est = android.os.SystemClock.elapsedRealtimeNanos() - d;
+                        if (videoStartBootNs < 0 || est < videoStartBootNs) videoStartBootNs = est;
+                    }
+                }
                 // Caminho do recorte conta do início real da gravação (t = 0 do arquivo).
                 if (event instanceof VideoRecordEvent.Start && reframer != null && analysis != null) reframer.beginPath();
                 // Qual microfone o Android escolheu de fato (o áudio abre logo depois do Start).
@@ -388,8 +410,62 @@ public class TeleprompterCameraPlugin extends Plugin {
             });
             JSObject r = new JSObject();
             r.put("audio", audio);
+            r.put("externalMic", extMic != null);
             call.resolve(r);
         });
+    }
+
+    /**
+     * Troca o áudio do celular pelo do microfone externo (se gravou). Devolve o microfone para os
+     * detalhes ou null se ficou o da câmera; warn recebe o motivo para avisar a pessoa.
+     */
+    private JSObject applyExternalMic(ExternalMic m, File video, long videoStart, StringBuilder warn) {
+        File pcm = m.file();
+        try {
+            if (m.failed() || m.frames() < ExternalMic.RATE) {
+                warn.append("O microfone externo não gravou — ficou o áudio do celular.");
+                return null;
+            }
+            AudioDeviceInfo routed = m.routed();
+            if (routed != null && micRank(routed.getType()) < 2 && routed.getType() != AudioDeviceInfo.TYPE_WIRED_HEADSET) {
+                warn.append("O Android não liberou o microfone externo — ficou o áudio do celular.");
+                return null;
+            }
+            if (m.peak() < 0.001f) {
+                warn.append("O receptor não mandou som (transmissor ligado e pareado?) — ficou o áudio do celular.");
+                return null;
+            }
+            File tmp = new File(video.getParentFile(), video.getName().replaceFirst("\\.mp4$", "-ext.mp4"));
+            AudioReplacer.Outcome o = AudioReplacer.run(video, pcm, m.startBootNs(), videoStart, tmp);
+            if (!o.replaced || !tmp.exists() || tmp.length() == 0) {
+                //noinspection ResultOfMethodCallIgnored
+                tmp.delete();
+                warn.append("Não deu para usar o microfone externo (").append(o.reason).append(") — ficou o áudio do celular.");
+                return null;
+            }
+            //noinspection ResultOfMethodCallIgnored
+            video.delete();
+            if (!tmp.renameTo(video)) {
+                warn.append("Falha ao trocar o áudio.");
+                return null;
+            }
+            AudioDeviceInfo dev = routed != null ? routed : m.device();
+            JSObject mic = new JSObject();
+            mic.put("type", micKind(dev.getType()));
+            CharSequence name = dev.getProductName();
+            mic.put("name", name != null ? name.toString() : "");
+            mic.put("rate", ExternalMic.RATE);
+            mic.put("sync", o.method);
+            mic.put("syncMs", o.offsetMs);
+            mic.put("syncCorr", Math.round(o.corr * 100) / 100.0);
+            return mic;
+        } catch (Exception e) {
+            warn.append("Não deu para usar o microfone externo — ficou o áudio do celular.");
+            return null;
+        } finally {
+            //noinspection ResultOfMethodCallIgnored
+            pcm.delete();
+        }
     }
 
     @PluginMethod
@@ -408,14 +484,31 @@ public class TeleprompterCameraPlugin extends Plugin {
         final long durNs = ev.getRecordingStats().getRecordedDurationNanos();
         final int error = ev.getError();
         final List<Reframer.Point> path = reframer != null ? reframer.endPath() : null;
-        final JSObject mic = recMic != null ? recMic : readMic(false);
+        final JSObject camMic = recMic != null ? recMic : readMic(false);
+        final ExternalMic ext = extMic;
+        extMic = null;
+        final long videoStart = videoStartBootNs;
         new Thread(() -> {
             JSObject r = new JSObject();
             r.put("path", f.getAbsolutePath());
-            r.put("mic", mic);
             r.put("durationMs", durNs / 1_000_000L);
             if (error != VideoRecordEvent.Finalize.ERROR_NONE) r.put("error", error);
             boolean ok = f.exists() && f.length() > 0;
+            JSObject mic = camMic;
+            if (ext != null) {
+                ext.stop();
+                if (ok) {
+                    StringBuilder warn = new StringBuilder();
+                    JSObject m = applyExternalMic(ext, f, videoStart, warn);
+                    if (m != null) mic = m;
+                    if (warn.length() > 0) r.put("micWarn", warn.toString());
+                } else {
+                    //noinspection ResultOfMethodCallIgnored
+                    ext.file().delete();
+                }
+                ok = f.exists() && f.length() > 0;
+            }
+            r.put("mic", mic);
             r.put("ok", ok);
             if (ok) {
                 r.put("bytes", f.length());
@@ -710,6 +803,7 @@ public class TeleprompterCameraPlugin extends Plugin {
     protected void handleOnDestroy() {
         exporter.cancel();
         voiceExporter.cancel();
+        if (extMic != null) extMic.stop();
         if (reframer != null) reframer.close();
         if (analysisExec != null) analysisExec.shutdown();
         if (provider != null) provider.unbindAll();

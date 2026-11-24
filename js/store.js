@@ -25,6 +25,7 @@ export const DEFAULT_SETTINGS = {
   audioMode: 'voz', // 'voz' (tratado) | 'cru'
   gainDb: 0,       // 0–20 dB, com limitador
   gate: false,     // atenua o fundo nas pausas
+  micSource: 'auto', // APK: 'auto' (externo quando conectado) | 'interno'
   voice: 'leve',   // APK: tratamento de voz pós-gravação ('leve' | 'forte' | 'off')
 };
 

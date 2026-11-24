@@ -145,7 +145,8 @@ export function createNativeCapture({ video, getSettings, setSetting, toast, ask
     pauseReframe: () => {},
     isVertical: () => false,
     videoSize,
-    recStart: () => NativeCam.startRecording(),
+    // mic: 'auto' = lapela USB/fone com fio quando conectado (gravado à parte); 'interno' = o da câmera
+    recStart: () => NativeCam.startRecording({ mic: getSettings().micSource || 'auto' }),
     recStop: () => NativeCam.stopRecording(),
     /** Vertical 9:16 a partir do ORIGINAL; voice = tratamento de voz aplicado também nele. */
     makeVertical: (path, onProgress, voice = 'off') => {
