@@ -76,10 +76,8 @@ A interface é a mesma, mas a câmera, o preview e a gravação são **nativos**
 - **Microfone externo** (lapela com receptor USB‑C, fone com fio):
   - **Microfone → Lapela / externo quando conectado** (padrão) ou **Do celular**.
   - A câmera do Android pede o áudio como filmadora, e o sistema manda esse pedido para o microfone **do celular** mesmo com um USB ligado.
-  - Por isso, com microfone externo conectado, o app grava o receptor **à parte** e, ao parar, troca o áudio do vídeo. O vídeo é copiado, sem recodificar.
-  - A **sincronia é feita pela voz**: o app compara o volume do áudio da câmera com o do receptor e acha o deslocamento, com precisão de ~2 ms. Se não achar, usa o relógio.
-  - Se o receptor não mandar som, fica o áudio do celular e um aviso explica o motivo.
-  - Os detalhes do vídeo mostram o microfone usado e como foi sincronizado.
+  - Por isso, no modo Lapela/externo, o app pede à câmera a fonte **MIC**, que o Android leva para o microfone USB ou com fio quando há um conectado. O áudio sai no mesmo arquivo do vídeo, já sincronizado.
+  - Os detalhes do vídeo mostram o microfone que gravou de fato (lido do Android durante a gravação).
   - Testes sem aparelho: [VoiceDspTest.java](android/app/src/test/java/io/github/gleibsoncrn/teleprompter/VoiceDspTest.java). Rodam no CI, que publica amostras WAV (original, leve e forte) no artefato `amostras-voz`.
 
 Ao terminar, a tela mostra a resolução, o fps real, o codificador, o microfone e se a voz está tratada.
