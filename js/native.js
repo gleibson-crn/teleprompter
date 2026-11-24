@@ -13,7 +13,7 @@ export const fileUrl = (path) => Cap.convertFileSrc(path);
 if (isNative) document.documentElement.dataset.native = '';
 
 // Mudou alguma destas → precisa reabrir a câmera.
-const keyOf = (s) => [s.facing, s.res, s.fps, s.vertical, s.follow].join('|');
+const keyOf = (s) => [s.facing, s.res, s.fps, s.vertical, s.follow, s.micSource].join('|');
 
 /**
  * Captura nativa com a MESMA interface de createCapture (js/capture.js), para o
@@ -61,7 +61,7 @@ export function createNativeCapture({ video, getSettings, setSetting, toast, ask
     if (perm.microphone !== 'granted') toast('Sem permissão do microfone: o vídeo vai sair sem som.');
     const s = getSettings();
     try {
-      info = await NativeCam.startPreview({ facing: s.facing, quality: s.res, fps: s.fps, vertical: !!s.vertical, follow: s.follow !== false });
+      info = await NativeCam.startPreview({ facing: s.facing, quality: s.res, fps: s.fps, vertical: !!s.vertical, follow: s.follow !== false, mic: s.micSource || 'auto' });
     } catch (e) {
       toast('Não foi possível abrir a câmera: ' + (e?.message || e));
       return false;
@@ -145,8 +145,7 @@ export function createNativeCapture({ video, getSettings, setSetting, toast, ask
     pauseReframe: () => {},
     isVertical: () => false,
     videoSize,
-    // mic: 'auto' = lapela USB/fone com fio quando conectado (gravado à parte); 'interno' = o da câmera
-    recStart: () => NativeCam.startRecording({ mic: getSettings().micSource || 'auto' }),
+    recStart: () => NativeCam.startRecording(),
     recStop: () => NativeCam.stopRecording(),
     /** Vertical 9:16 a partir do ORIGINAL; voice = tratamento de voz aplicado também nele. */
     makeVertical: (path, onProgress, voice = 'off') => {
