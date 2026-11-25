@@ -75,7 +75,27 @@ final class Reframer implements ImageAnalysis.Analyzer {
         synchronized (lock) {
             path = new ArrayList<>();
             pathT0 = SystemClock.elapsedRealtime();
+            pausedAt = -1;
             path.add(new Point(0, center));
+        }
+    }
+
+    private long pausedAt = -1;
+
+    /** Gravação pausada: o arquivo não guarda o intervalo, então o caminho para de contar. */
+    void pausePath() {
+        synchronized (lock) {
+            if (path != null && pausedAt < 0) pausedAt = SystemClock.elapsedRealtime();
+        }
+    }
+
+    /** Gravação retomada: o tempo parado sai da conta (t continua de onde o arquivo parou). */
+    void resumePath() {
+        synchronized (lock) {
+            if (pausedAt >= 0) {
+                pathT0 += SystemClock.elapsedRealtime() - pausedAt;
+                pausedAt = -1;
+            }
         }
     }
 
@@ -147,7 +167,7 @@ final class Reframer implements ImageAnalysis.Analyzer {
         }
         center = Math.max(half, Math.min(1 - half, center));
         synchronized (lock) {
-            if (path != null) path.add(new Point(now - pathT0, center));
+            if (path != null && pausedAt < 0) path.add(new Point(now - pathT0, center));
         }
     }
 

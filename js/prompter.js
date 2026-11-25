@@ -17,6 +17,7 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
   const controls = $('controls');
   const btnToggle = $('btn-toggle');
   const btnRec = $('btn-rec');
+  const btnRecPause = $('btn-rec-pause');
   const progressBar = $('progress-bar');
   const countdownEl = $('countdown');
   const video = $('cam-video');
@@ -34,6 +35,10 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
   let recChunks = [];
   let recStart = 0;
   let recTimer = 0;
+  // Pausa da gravação (o arquivo continua o mesmo; o tempo parado não entra nele nem no cronômetro).
+  let recPaused = false;
+  let recPausedMs = 0;
+  let recPauseAt = 0;
   let recVertical = null; // gravação no Vertical inteligente: { end() → caminho do recorte }
   let recFps = 30;
   // Resultado: blobs por formato ('h' horizontal, 'v' vertical) e o formato exibido.
@@ -205,6 +210,7 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
 
   function toggle() {
     if (countdownTimer) return cancelCountdown();
+    if (recPaused) return resumeRec(); // pedal/teclado: continua a gravação
     playing ? pause() : play();
   }
 
@@ -243,7 +249,7 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
     if (!drag) return;
     const { moved, wasPlaying } = drag;
     drag = null;
-    if (!moved) toggle();
+    if (!moved && !recPaused) toggle(); // pausado: o toque não liga a rolagem (arrastar ajusta o texto)
     else if (wasPlaying) start();
   });
   stage.addEventListener('pointercancel', () => { drag = null; });
@@ -453,7 +459,7 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
   }
 
   // ---------- Gravação ----------
-  const isRecording = () => nativeRec || recorder?.state === 'recording';
+  const isRecording = () => nativeRec || (!!recorder && recorder.state !== 'inactive');
 
   function startRecording() {
     if (isNative) {
@@ -487,25 +493,106 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
 
   function showRecUi() {
     recStart = Date.now();
+    recPaused = false;
+    recPausedMs = 0;
     $('rec-badge').hidden = false;
     $('rec-time').textContent = '00:00';
-    recTimer = setInterval(() => {
-      const s = Math.floor((Date.now() - recStart) / 1000);
-      $('rec-time').textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-    }, 500);
+    recTimer = setInterval(renderRecTime, 500);
     btnRec.classList.add('on');
     btnRec.innerHTML = icon('square');
+    btnRec.setAttribute('aria-label', 'Parar gravação');
+    // Gravando: o play amarelo sai; no lugar, pausar/continuar a GRAVAÇÃO.
+    btnToggle.hidden = true;
+    btnRecPause.hidden = false;
+    renderRecPause();
     if (!$('av').hidden) renderAv();
+  }
+
+  function renderRecTime() {
+    const paused = recPaused ? Date.now() - recPauseAt : 0;
+    const s = Math.max(0, Math.floor((Date.now() - recStart - recPausedMs - paused) / 1000));
+    const t = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+    $('rec-time').textContent = recPaused ? `Pausado · ${t}` : t;
+  }
+
+  function renderRecPause() {
+    btnRecPause.innerHTML = icon(recPaused ? 'video' : 'pause');
+    btnRecPause.setAttribute('aria-label', recPaused ? 'Continuar gravação' : 'Pausar gravação');
+    btnRecPause.classList.toggle('rec', recPaused);
+    $('rec-badge').classList.toggle('paused', recPaused);
+    renderRecTime();
   }
 
   function resetRecUi() {
     clearInterval(recTimer);
     $('rec-badge').hidden = true;
+    $('rec-badge').classList.remove('paused');
     btnRec.classList.remove('on');
     btnRec.innerHTML = icon('video');
+    btnRec.setAttribute('aria-label', 'Gravar');
+    btnRecPause.hidden = true;
+    btnToggle.hidden = false;
+    recPaused = false;
+  }
+
+  /** Pausa/continua a GRAVAÇÃO (o vídeo segue no mesmo arquivo). */
+  function toggleRecPause() {
+    if (!isRecording()) return;
+    if (recPaused) resumeRec();
+    else pauseRec();
+  }
+
+  async function pauseRec() {
+    if (recPaused) return;
+    cancelCountdown();
+    try {
+      if (isNative) await capture.recPause();
+      else recorder.pause();
+    } catch (e) {
+      toast('Não foi possível pausar: ' + (e?.message || e));
+      return;
+    }
+    recVertical?.pause?.();
+    recPaused = true;
+    recPauseAt = Date.now();
+    pause();
+    renderRecPause();
+    toast('Gravação pausada. Arraste o texto para voltar e toque no botão de gravar para continuar.');
+  }
+
+  /** Continua depois de uma contagem curta (dá tempo de se posicionar). */
+  function resumeRec() {
+    if (!recPaused || countdownTimer) return;
+    const go = async () => {
+      try {
+        if (isNative) await capture.recResume();
+        else recorder.resume();
+      } catch (e) {
+        toast('Não foi possível continuar: ' + (e?.message || e));
+        return;
+      }
+      recVertical?.resume?.();
+      recPausedMs += Date.now() - recPauseAt;
+      recPaused = false;
+      renderRecPause();
+      if (pos < maxPos) start();
+    };
+    const secs = Math.min(3, getSettings().countdown);
+    if (secs <= 0) { go(); return; }
+    let n = secs;
+    countdownEl.textContent = n;
+    countdownEl.hidden = false;
+    countdownTimer = setInterval(() => {
+      n--;
+      if (n > 0) { countdownEl.textContent = n; return; }
+      cancelCountdown();
+      go();
+    }, 1000);
+    renderState();
   }
 
   function stopRecording() {
+    cancelCountdown();
     resetRecUi();
     if (isNative) {
       if (!nativeRec) return;
@@ -860,7 +947,7 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
   return {
     open, close, applySettings, toggle, changeSpeed,
     restart: () => { pause(); cancelCountdown(); setPos(0); },
-    toggleRecording, saveRecording, shareRecording, discardRecording: closeRecording, showFormat, showVoice,
+    toggleRecording, toggleRecPause, saveRecording, shareRecording, discardRecording: closeRecording, showFormat, showVoice,
     isRecording,
     isCamera: () => cameraMode,
     openAv: () => { $('settings').hidden = true; $('av').hidden = false; renderAv(); },

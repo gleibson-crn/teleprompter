@@ -147,6 +147,8 @@ export function createNativeCapture({ video, getSettings, setSetting, toast, ask
     videoSize,
     recStart: () => NativeCam.startRecording(),
     recStop: () => NativeCam.stopRecording(),
+    recPause: () => NativeCam.pauseRecording(),
+    recResume: () => NativeCam.resumeRecording(),
     /** Vertical 9:16 a partir do ORIGINAL; voice = tratamento de voz aplicado também nele. */
     makeVertical: (path, onProgress, voice = 'off') => {
       const sub = Promise.resolve(NativeCam.addListener('verticalProgress', ({ p }) => onProgress(p / 100)));

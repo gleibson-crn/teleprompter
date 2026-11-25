@@ -157,6 +157,7 @@ export function createReframe(video, canvas, { follow = true, onStatus = () => {
   let paused = false;
   let path = null; // caminho do recorte durante a gravação: [{ t (ms desde o início), c (centro) }]
   let pathT0 = 0;
+  let pathPausedAt = null; // gravação pausada desde (ms)
 
   if (follow) {
     onStatus('loading');
@@ -216,7 +217,7 @@ export function createReframe(video, canvas, { follow = true, onStatus = () => {
       const half = w / 2;
       center = Math.max(half, Math.min(sw - half, center));
       ctx.drawImage(video, Math.round(center - half), Math.round((sh - h) / 2), w, h, 0, 0, w, h);
-      path?.push({ t: performance.now() - pathT0, c: center });
+      if (pathPausedAt == null) path?.push({ t: performance.now() - pathT0, c: center });
       // Quadros por segundo do preview (diagnóstico no painel Câmera e áudio).
       fpsCount++;
       if (now - fpsT0 >= 1000) { state.fps = Math.round((fpsCount * 1000) / (now - fpsT0)); fpsCount = 0; fpsT0 = now; }
@@ -235,7 +236,10 @@ export function createReframe(video, canvas, { follow = true, onStatus = () => {
     stop() { running = false; },
     /** Pausa o preview e a detecção (libera o aparelho enquanto o vertical é gerado). */
     pause(v) { paused = v; },
-    beginPath() { path = []; pathT0 = performance.now(); },
+    beginPath() { path = []; pathT0 = performance.now(); pathPausedAt = null; },
+    // Gravação pausada: o arquivo não guarda o intervalo, então o caminho também não.
+    pausePath() { if (path && pathPausedAt == null) pathPausedAt = performance.now(); },
+    resumePath() { if (pathPausedAt != null) { pathT0 += performance.now() - pathPausedAt; pathPausedAt = null; } },
     endPath() { const p = path || []; path = null; return p; },
   };
 }

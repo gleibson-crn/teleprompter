@@ -395,11 +395,33 @@ public class TeleprompterCameraPlugin extends Plugin {
                 if (event instanceof VideoRecordEvent.Start) previewView.postDelayed(() -> {
                     if (recording != null) recMic = readMic(true);
                 }, 700);
+                // Pausa: o arquivo não guarda o intervalo; o caminho do recorte também não.
+                if (event instanceof VideoRecordEvent.Pause && reframer != null) reframer.pausePath();
+                if (event instanceof VideoRecordEvent.Resume && reframer != null) reframer.resumePath();
                 if (event instanceof VideoRecordEvent.Finalize) onFinalize((VideoRecordEvent.Finalize) event);
             });
             JSObject r = new JSObject();
             r.put("audio", audio);
             call.resolve(r);
+        });
+    }
+
+    /** Pausa a gravação sem encerrar o arquivo (para voltar o texto ou refazer um trecho). */
+    @PluginMethod
+    public void pauseRecording(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            if (recording == null) { call.reject("Não está gravando."); return; }
+            recording.pause();
+            call.resolve();
+        });
+    }
+
+    @PluginMethod
+    public void resumeRecording(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            if (recording == null) { call.reject("Não está gravando."); return; }
+            recording.resume();
+            call.resolve();
         });
     }
 

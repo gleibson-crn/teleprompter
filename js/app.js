@@ -277,6 +277,7 @@ const ACTIONS = {
   slower: () => prompter.changeSpeed(-1),
   faster: () => prompter.changeSpeed(1),
   record: () => prompter.toggleRecording(),
+  'rec-pause': () => prompter.toggleRecPause(),
   settings: () => { prompter.closeAv(); syncSettingsForm(); $('settings').hidden = false; },
   'settings-close': () => { $('settings').hidden = true; },
   av: () => { syncSettingsForm(); prompter.openAv(); },

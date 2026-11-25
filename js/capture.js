@@ -97,7 +97,7 @@ export function createCapture({ video, canvas, getSettings, setSetting, toast, o
       videoBitsPerSecond: Math.max(2_500_000, Math.round(w * h * fps * 0.13)),
       fps: Math.round(fps),
       // Celular em pé: a câmera já entrega o quadro vertical — grava um vídeo só, sem gerar outro.
-      vertical: rf && video.videoWidth > video.videoHeight ? { begin: () => rf.beginPath(), end: () => rf.endPath() } : null,
+      vertical: rf && video.videoWidth > video.videoHeight ? { begin: () => rf.beginPath(), end: () => rf.endPath(), pause: () => rf.pausePath(), resume: () => rf.resumePath() } : null,
     };
   }
 

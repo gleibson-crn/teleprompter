@@ -160,6 +160,7 @@ button, input, textarea { font: inherit; color: inherit; }
   font-variant-numeric: tabular-nums; font-weight: 600; z-index: 3;
 }
 .rec-badge .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--rec); animation: blink 1s infinite; }
+.rec-badge.paused .dot { animation: none; background: var(--muted, #9aa3b2); }
 @keyframes blink { 50% { opacity: .2; } }
 
 .controls {
