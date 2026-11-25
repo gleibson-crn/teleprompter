@@ -10,6 +10,11 @@ Teleprompter para celular em forma de **PWA**: você instala pelo navegador, sem
 
 - Vários roteiros, com autosave, colar da área de transferência, excluir e contagem de palavras e tempo estimado.
 - Rolagem automática com velocidade ajustável ao vivo (− / +).
+- **Pausar a gravação** sem encerrar o vídeo:
+  - durante a gravação, o play amarelo sai e entra o botão de pausar;
+  - pausado, o vídeo e o texto param e você arrasta o texto para voltar;
+  - continuar tem uma contagem curta e segue no mesmo arquivo;
+  - o tempo parado não entra no vídeo nem no cronômetro.
 - Toque inicia ou pausa a rolagem. Arrastar posiciona o texto.
 - Ajustes salvos no aparelho:
   - tamanho da fonte;
