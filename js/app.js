@@ -273,6 +273,7 @@ const ACTIONS = {
   camera: () => { flushSave(); go(`#/cam/${currentId}`); },
   close: () => leavePrompter(),
   toggle: () => prompter.toggle(),
+  update: () => offerUpdate(),
   restart: () => prompter.restart(),
   slower: () => prompter.changeSpeed(-1),
   faster: () => prompter.changeSpeed(1),
@@ -320,7 +321,24 @@ async function installUpdate(url) {
   }
 }
 
+// Versão nova encontrada: { tag, url, cur }. Enquanto existir, o botão Atualizar fica no topo da lista
+// (o modal aparece 1 vez por versão; se fechar sem querer, o botão continua lá).
+let available = null;
+let lastCheck = 0;
+
+async function offerUpdate() {
+  if (!available) return;
+  const ok = await ask({
+    title: 'Nova versão disponível',
+    message: `A versão ${available.tag} está pronta (você tem ${available.cur}). Baixar e instalar agora? Os roteiros continuam.`,
+    ok: 'Atualizar', icon: 'download', danger: false,
+  });
+  if (ok) installUpdate(available.url);
+  else toast('Quando quiser, toque em Atualizar no topo da lista.');
+}
+
 async function checkUpdate() {
+  lastCheck = Date.now();
   try {
     const { name } = await NativeCam.appVersion();
     const cur = parseVer(name);
@@ -331,20 +349,21 @@ async function checkUpdate() {
     const next = parseVer(rel.tag_name);
     const apk = rel.assets?.find((a) => a.name.endsWith('.apk'));
     if (!next || !apk || !newer(next, cur)) return;
-    const ok = await ask({
-      title: 'Nova versão disponível',
-      message: `A versão ${rel.tag_name} está pronta (você tem ${name}). Baixar e instalar agora? Os roteiros continuam.`,
-      ok: 'Atualizar', icon: 'download', danger: false,
-    });
-    if (ok) installUpdate(apk.browser_download_url);
+    const first = available?.tag !== rel.tag_name;
+    available = { tag: rel.tag_name, url: apk.browser_download_url, cur: name };
+    $('btn-update').hidden = false;
+    if (first) offerUpdate();
   } catch { /* sem internet: tenta na próxima abertura */ }
 }
 
 if (isNative) {
   checkUpdate();
-  // Voltou dos ajustes depois de liberar a instalação: continua de onde parou.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && pendingUpdate) installUpdate(pendingUpdate);
+    if (document.visibilityState !== 'visible') return;
+    // Voltou dos ajustes depois de liberar a instalação: continua de onde parou.
+    if (pendingUpdate) installUpdate(pendingUpdate);
+    // App ficou aberto em segundo plano: procura de novo (no máx. a cada 30 min).
+    else if (Date.now() - lastCheck > 30 * 60_000) checkUpdate();
   });
 }
 

@@ -70,6 +70,8 @@ button, input, textarea { font: inherit; color: inherit; }
 }
 .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .btn-ico .ico { width: 20px; height: 20px; }
+.btn.small { height: 36px; padding: 0 12px; gap: 6px; font-size: 14px; }
+.btn.small .btn-ico .ico { width: 18px; height: 18px; }
 
 .fab {
   position: fixed; right: 20px; bottom: calc(20px + var(--safe-bottom));
