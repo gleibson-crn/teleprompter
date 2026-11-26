@@ -211,6 +211,8 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
   function toggle() {
     if (countdownTimer) return cancelCountdown();
     if (recPaused) return resumeRec(); // pedal/teclado: continua a gravação
+    // Modo câmera: não há leitura de teste — o pedal/espaço grava e pausa a gravação.
+    if (cameraMode && capture.active()) return isRecording() ? toggleRecPause() : toggleRecording();
     playing ? pause() : play();
   }
 
@@ -249,7 +251,8 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
     if (!drag) return;
     const { moved, wasPlaying } = drag;
     drag = null;
-    if (!moved && !recPaused) toggle(); // pausado: o toque não liga a rolagem (arrastar ajusta o texto)
+    // Modo câmera: o toque não mexe na rolagem/gravação (só os botões); arrastar ajusta o texto.
+    if (!moved && !recPaused && !cameraMode) toggle();
     else if (wasPlaying) start();
   });
   stage.addEventListener('pointercancel', () => { drag = null; });
@@ -291,7 +294,7 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
   // ---------- Câmera ----------
   async function startCamera() {
     const ok = await capture.start();
-    $('btn-av').hidden = !ok;
+    setSheetTabs(ok);
     $('meter').hidden = !ok || isNative; // no APK o áudio ainda não passa pela página
     clearInterval(meterTimer);
     if (ok) meterTimer = setInterval(renderMeter, 70);
@@ -299,6 +302,11 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
     layout();
     if (!$('av').hidden) renderAv();
     return ok;
+  }
+
+  /** Com a câmera ligada, a engrenagem mostra as abas Texto | Câmera e áudio. */
+  function setSheetTabs(on) {
+    for (const t of document.querySelectorAll('.sheet-tabs')) t.hidden = !on;
   }
 
   async function restartCamera() {
@@ -315,7 +323,7 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
     clearInterval(meterTimer);
     capture.stop();
     $('meter').hidden = true;
-    $('btn-av').hidden = true;
+    setSheetTabs(false);
     $('reframe-status').hidden = true;
     updateCameraClasses();
   }
@@ -531,7 +539,7 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
     btnRec.innerHTML = icon('video');
     btnRec.setAttribute('aria-label', 'Gravar');
     btnRecPause.hidden = true;
-    btnToggle.hidden = false;
+    btnToggle.hidden = cameraMode; // modo câmera: só gravar / pausar / parar
     recPaused = false;
   }
 
@@ -903,6 +911,7 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
     view.classList.toggle('camera', camera);
     btnRec.hidden = !camera;
     btnRec.innerHTML = icon('video');
+    btnToggle.hidden = camera; // modo câmera: sem play de teste, só gravar / pausar / parar
     text.textContent = script.text || '';
     pos = 0;
     maxPos = 0;
@@ -913,6 +922,7 @@ export function createPrompter({ getSettings, setSetting, toast, ask }) {
     renderState();
     if (camera && !(await startCamera())) {
       btnRec.hidden = true;
+      btnToggle.hidden = false;
       cameraMode = false;
       view.classList.remove('camera');
       layout();

@@ -11,12 +11,12 @@ Teleprompter para celular em forma de **PWA**: você instala pelo navegador, sem
 - Vários roteiros, com autosave, colar da área de transferência, excluir e contagem de palavras e tempo estimado.
 - Rolagem automática com velocidade ajustável ao vivo (− / +).
 - **Pausar a gravação** sem encerrar o vídeo:
-  - durante a gravação, o play amarelo sai e entra o botão de pausar;
+  - durante a gravação aparece o botão de pausar, ao lado do de parar;
   - pausado, o vídeo e o texto param e você arrasta o texto para voltar;
   - continuar tem uma contagem curta e segue no mesmo arquivo;
   - o tempo parado não entra no vídeo nem no cronômetro.
-- Toque inicia ou pausa a rolagem. Arrastar posiciona o texto.
-- Ajustes salvos no aparelho:
+- Na leitura, o play amarelo ou um toque inicia/pausa a rolagem. Arrastar posiciona o texto.
+- **Configurações** (engrenagem), salvas no aparelho. Aba **Texto**:
   - tamanho da fonte;
   - margens;
   - linha de leitura (posição e liga/desliga);
@@ -24,6 +24,9 @@ Teleprompter para celular em forma de **PWA**: você instala pelo navegador, sem
   - texto centralizado;
   - espelhamento horizontal e vertical (para teleprompter com vidro).
 - **Modo câmera:**
+  - só gravar, pausar e parar: não há play de teste, e o toque no texto não inicia nada (arrastar ainda posiciona);
+  - a engrenagem abre as abas **Texto** e **Câmera e áudio**;
+  - a tela **Gravação pronta** cabe inteira, sem rolagem: o vídeo encolhe para caber os botões Descartar, Compartilhar e Salvar numa linha;
   - preview da câmera, com o texto perto da lente: no topo com o celular em pé, e na lateral do lado da lente com o celular deitado;
   - gravação de áudio e vídeo **sem o texto**;
   - o vídeo é salvo em MP4 quando o navegador suporta (WebM nos demais) ou enviado pelo compartilhar.
@@ -35,7 +38,7 @@ Teleprompter para celular em forma de **PWA**: você instala pelo navegador, sem
   - o recorte usa suavização e zona morta para não tremer; o detector de rosto roda numa thread separada (Web Worker), sem travar a tela;
   - o painel Câmera e áudio mostra o desempenho ao vivo (fps do preview, detector e tempo de detecção);
   - o detector de rosto (MediaPipe, ~12 MB) é baixado na 1ª vez que você liga o modo e depois funciona offline.
-- **Câmera e áudio** (botão de controles na tela da câmera):
+- **Câmera e áudio** (engrenagem → aba Câmera e áudio, na tela da câmera):
   - câmera frontal (padrão) ou traseira (para quando outra pessoa grava ou o texto não é lido na tela), resolução 720p/1080p e 30/60 fps;
   - zoom, exposição, foco manual e lanterna, que só aparecem se o aparelho suportar;
   - grade de terços e guia vertical 9:16;
@@ -48,7 +51,7 @@ Teleprompter para celular em forma de **PWA**: você instala pelo navegador, sem
   - **diagnóstico de gravação** (8 s, nada é salvo): mostra o codificador de vídeo (hardware × software), quadros reais da câmera e do arquivo, maior buraco entre quadros e travadas da tela; botão Copiar para enviar o relatório.
 - A tela não apaga durante a leitura (Wake Lock).
 - Teclado ou pedal Bluetooth:
-  - espaço inicia ou pausa;
+  - espaço inicia ou pausa a rolagem (no modo câmera: inicia a gravação, pausa e continua);
   - ↑ e ↓ mudam a velocidade;
   - PgUp/PgDn e ←/→ saltam pelo texto.
 - Importar e exportar roteiros (`.json` com todos, ou `.txt` avulso). Exporte de vez em quando como backup.
@@ -70,7 +73,7 @@ A interface é a mesma, mas a câmera, o preview e a gravação são **nativos**
 - arquivo sem espelhar.
 - **Vertical inteligente** nativo: com o celular deitado, o detector de rosto do Android (ML Kit, roda no aparelho) move uma janela 9:16 no preview acompanhando você. Ao parar, o app gera o vertical a partir do horizontal com o codificador de hardware (Media3). Você recebe os dois: 1920×1080 + 608×1080 (ou 1280×720 + 400×720 na câmera de 720p). Em pé, sai um vídeo só.
 
-- **Tratamento de voz** (painel Câmera e áudio → Áudio): **Leve** (padrão), **Forte** ou **Desligado**.
+- **Tratamento de voz** (engrenagem → Câmera e áudio → Áudio): **Leve** (padrão), **Forte** ou **Desligado**.
   - Aplicado depois de gravar, numa cópia: o vídeo é copiado sem recodificar e só o áudio é refeito. Se houver vertical, ele sai do original com o mesmo tratamento.
   - A cadeia é:
     - passa-altas em 80 Hz, que tira ronco e vento;

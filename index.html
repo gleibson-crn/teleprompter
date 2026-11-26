@@ -81,16 +81,19 @@
         <button id="btn-rec" class="icon-btn rec" data-action="record" aria-label="Gravar" hidden></button>
         <button id="btn-rec-pause" class="icon-btn big" data-action="rec-pause" aria-label="Pausar gravação" hidden></button>
         <button id="btn-toggle" class="icon-btn big" data-action="toggle" aria-label="Iniciar/pausar"></button>
-        <button id="btn-av" class="icon-btn" data-action="av" aria-label="Câmera e áudio" hidden></button>
-        <button class="icon-btn" data-action="settings" aria-label="Ajustes"></button>
+        <button class="icon-btn" data-action="settings" aria-label="Configurações"></button>
       </div>
     </div>
 
-    <!-- Ajustes -->
+    <!-- Configurações: aba Texto (as abas aparecem com a câmera ligada) -->
     <div id="settings" class="sheet" hidden>
       <div class="sheet-head">
-        <h2>Ajustes</h2>
-        <button class="icon-btn" data-action="settings-close" aria-label="Fechar ajustes"></button>
+        <h2>Configurações</h2>
+        <button class="icon-btn" data-action="settings-close" aria-label="Fechar configurações"></button>
+      </div>
+      <div class="segmented sheet-tabs" role="tablist" hidden>
+        <button class="seg on" role="tab" data-action="settings"><span data-icon="file-text"></span>Texto</button>
+        <button class="seg" role="tab" data-action="av"><span data-icon="video"></span>Câmera e áudio</button>
       </div>
       <label class="field">Velocidade <output data-out="speed"></output>
         <input type="range" data-setting="speed" min="1" max="40" step="1"></label>
@@ -110,11 +113,15 @@
       </div>
     </div>
 
-    <!-- Câmera e áudio -->
+    <!-- Configurações: aba Câmera e áudio -->
     <div id="av" class="sheet" hidden>
       <div class="sheet-head">
-        <h2>Câmera e áudio</h2>
-        <button class="icon-btn" data-action="av-close" aria-label="Fechar"></button>
+        <h2>Configurações</h2>
+        <button class="icon-btn" data-action="av-close" aria-label="Fechar configurações"></button>
+      </div>
+      <div class="segmented sheet-tabs" role="tablist" hidden>
+        <button class="seg" role="tab" data-action="settings"><span data-icon="file-text"></span>Texto</button>
+        <button class="seg on" role="tab" data-action="av"><span data-icon="video"></span>Câmera e áudio</button>
       </div>
       <p id="av-locked" class="hint warn" hidden>Pare a gravação para trocar câmera, resolução ou microfone.</p>
 
@@ -217,7 +224,7 @@
       </div>
       <video id="rec-preview" class="rec-preview" controls playsinline></video>
       <p id="rec-details" class="hint" hidden></p>
-      <div class="actions wide">
+      <div class="rec-actions">
         <button class="btn secondary" data-action="rec-discard"><span class="btn-ico" data-icon="trash-2"></span>Descartar</button>
         <button id="btn-rec-share" class="btn secondary" data-action="rec-share" hidden><span class="btn-ico" data-icon="share-2"></span>Compartilhar</button>
         <button class="btn primary" data-action="rec-save"><span class="btn-ico" data-icon="download"></span>Salvar</button>

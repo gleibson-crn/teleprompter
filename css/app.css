@@ -192,7 +192,17 @@ button, input, textarea { font: inherit; color: inherit; }
 .toggles { display: grid; gap: 4px; margin-top: 8px; }
 .toggle { display: flex; align-items: center; gap: 10px; padding: 10px 4px; cursor: pointer; }
 .toggle input { width: 20px; height: 20px; accent-color: var(--accent); }
-.rec-preview { display: block; width: 100%; max-height: 50dvh; background: #000; border-radius: 10px; margin: 8px 0 12px; }
+.sheet-tabs { margin: 0 0 8px; }
+/* Gravação pronta: cabe na tela sem rolagem — o vídeo encolhe para caber o resto. */
+#rec-result:not([hidden]) { display: flex; flex-direction: column; max-height: 94dvh; overflow: hidden; }
+#rec-result > * { flex: none; }
+.rec-preview {
+  display: block; width: 100%; background: #000; border-radius: 10px; margin: 8px 0;
+  flex: 0 1 auto !important; min-height: 120px; max-height: 60dvh; object-fit: contain;
+}
+#rec-details { margin: 0 0 8px; font-size: 12.5px; line-height: 1.35; }
+.rec-actions { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
+.rec-actions .btn { justify-content: center; gap: 6px; padding: 0 8px; font-size: 14px; min-width: 0; white-space: nowrap; }
 .segmented {
   display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin: 4px 0 2px;
   background: var(--bg); border: 1px solid var(--border); border-radius: 999px;
@@ -342,4 +352,10 @@ html:not([data-native]) [data-native-only] { display: none !important; }
     top: 0; bottom: 0; left: auto; width: min(100%, 440px); max-height: none;
     border-radius: 18px 0 0 18px; border-top: 0; border-left: 1px solid var(--border);
   }
+  /* Gravação pronta deitado: altura curta — compacta para caber sem rolagem. */
+  #rec-result { padding-top: 4px; }
+  #rec-result .sheet-head h2 { margin: 4px 0; }
+  #rec-result .seg { height: 32px; }
+  #rec-result .rec-preview { min-height: 60px; margin: 6px 0; }
+  #rec-result .rec-actions .btn { height: 40px; }
 }
