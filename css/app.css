@@ -204,7 +204,8 @@ button, input, textarea { font: inherit; color: inherit; }
 }
 #rec-details { margin: 0 0 8px; font-size: 12.5px; line-height: 1.35; }
 .rec-actions { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
-.rec-actions .btn { justify-content: center; gap: 6px; padding: 0 8px; font-size: 14px; min-width: 0; white-space: nowrap; }
+.rec-actions .btn { justify-content: center; padding: 0; min-width: 0; }
+.rec-actions .btn-ico .ico { width: 24px; height: 24px; }
 .segmented {
   display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin: 4px 0 2px;
   background: var(--bg); border: 1px solid var(--border); border-radius: 999px;

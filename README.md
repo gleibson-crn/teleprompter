@@ -26,7 +26,7 @@ Teleprompter para celular em forma de **PWA**: você instala pelo navegador, sem
 - **Modo câmera:**
   - só gravar, pausar e parar: não há play de teste, e o toque no texto não inicia nada (arrastar ainda posiciona);
   - a engrenagem abre as abas **Texto** e **Câmera e áudio**;
-  - a tela **Gravação pronta** cabe inteira, sem rolagem: o vídeo encolhe para caber os botões Descartar, Compartilhar e Salvar numa linha;
+  - a tela **Gravação pronta** cabe inteira, sem rolagem: o vídeo encolhe para caber os botões Descartar, Compartilhar e Salvar (só ícones) numa linha;
   - preview da câmera, com o texto perto da lente: no topo com o celular em pé, e na lateral do lado da lente com o celular deitado;
   - gravação de áudio e vídeo **sem o texto**;
   - o vídeo é salvo em MP4 quando o navegador suporta (WebM nos demais) ou enviado pelo compartilhar.
